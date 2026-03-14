@@ -187,4 +187,137 @@ Generate SDK Command
 
 <div class="signal" id="sig1"></div>
 
-<button onclick="generate('ETH V
+<button onclick="generate('ETH Volatility Predictor',1)">
+Generate SDK Command
+</button>
+
+<div class="code" id="code1"></div>
+
+</div>
+
+<div class="model">
+
+<div class="name">Crypto Sentiment AI</div>
+<div class="category">Analytics</div>
+<div class="description">Analyzes crypto sentiment for markets.</div>
+
+<span class="cap">NLP</span>
+<span class="cap">Sentiment</span>
+
+<div class="signal" id="sig2"></div>
+
+<button onclick="generate('Crypto Sentiment AI',2)">
+Generate SDK Command
+</button>
+
+<div class="code" id="code2"></div>
+
+</div>
+
+<div class="model">
+
+<div class="name">Bidirectional Attention Flow</div>
+<div class="category">NLP</div>
+<div class="description">Architecture for question answering.</div>
+
+<span class="cap">QA</span>
+<span class="cap">Context</span>
+
+<div class="signal" id="sig3"></div>
+
+<button onclick="generate('Bidirectional Attention Flow',3)">
+Generate SDK Command
+</button>
+
+<div class="code" id="code3"></div>
+
+</div>
+
+<div class="feed" id="feed">
+
+<b>Live Model Activity</b>
+
+</div>
+
+</div>
+
+<script>
+
+/* SDK generator */
+
+function generate(model,id){
+
+let code = `pip install opengradient
+
+import opengradient as og
+
+llm = og.LLM(private_key="YOUR_KEY")
+
+response = llm.chat(
+model="${model}",
+messages=[{"role":"user","content":"Hello"}]
+)
+
+print(response)`
+
+let box=document.getElementById("code"+id)
+
+box.style.display="block"
+box.innerText=code
+
+}
+
+/* SIGNAL SCANNER */
+
+let signals=["BULLISH","BEARISH","NEUTRAL"]
+
+function updateSignals(){
+
+for(let i=0;i<4;i++){
+
+let s=signals[Math.floor(Math.random()*signals.length)]
+
+document.getElementById("sig"+i).innerText="Signal: "+s
+
+}
+
+}
+
+setInterval(updateSignals,4000)
+
+updateSignals()
+
+/* LIVE FEED */
+
+let feed=document.getElementById("feed")
+
+let events=[
+"Model inference executed",
+"New model interaction",
+"Signal update detected",
+"AI workflow triggered"
+]
+
+function addFeed(){
+
+let e=events[Math.floor(Math.random()*events.length)]
+
+let t=new Date().toLocaleTimeString()
+
+let line=document.createElement("div")
+
+line.innerText="["+t+"] "+e
+
+feed.appendChild(line)
+
+feed.scrollTop=feed.scrollHeight
+
+}
+
+setInterval(addFeed,3000)
+
+</script>
+
+</body>
+
+</html>
