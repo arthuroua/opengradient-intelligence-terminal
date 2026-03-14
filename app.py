@@ -1,133 +1,41 @@
-<!DOCTYPE html>
-<html>
+from flask import Flask, render_template
+import requests
 
-<head>
+app = Flask(__name__)
 
-<title>OpenGradient Intelligence Terminal</title>
+API_URL="https://hub.opengradient.ai/api/models?page=0&limit=20&sort_by=most_likes"
 
-<style>
+def get_models():
 
-body{
-background:#05070d;
-color:#00f2ff;
-font-family:monospace;
-margin:0;
-}
+    try:
+        r=requests.get(API_URL,timeout=10)
 
-.header{
-text-align:center;
-padding:40px;
-font-size:36px;
-}
+        data=r.json()
 
-.terminal{
-max-width:900px;
-margin:auto;
-background:#0b0f1a;
-padding:20px;
-border-radius:10px;
-}
+        models=[]
 
-.model{
-border-bottom:1px solid #1a2333;
-padding:18px;
-}
+        for m in data.get("models",[]):
 
-.name{
-font-size:20px;
-color:white;
-}
+            models.append({
+                "name":m.get("name","Unknown"),
+                "description":m.get("description","OpenGradient model"),
+                "likes":m.get("likes",0)
+            })
 
-.description{
-color:#9bb3c9;
-margin-top:5px;
-}
+        return models
 
-.likes{
-color:#00f2ff;
-font-size:13px;
-}
+    except Exception as e:
 
-button{
-margin-top:10px;
-background:#00f2ff;
-border:none;
-padding:6px 12px;
-cursor:pointer;
-border-radius:6px;
-}
+        print("API error:",e)
 
-.code{
-display:none;
-background:#04060c;
-padding:10px;
-margin-top:10px;
-white-space:pre;
-border-radius:6px;
-}
+        return []
 
-</style>
+@app.route("/")
+def home():
 
-</head>
+    models=get_models()
 
-<body>
+    return render_template("index.html",models=models)
 
-<div class="header">
-OpenGradient Intelligence Terminal
-</div>
-
-<div class="terminal">
-
-{% for m in models %}
-
-<div class="model">
-
-<div class="name">{{m.name}}</div>
-
-<div class="description">{{m.description}}</div>
-
-<div class="likes">❤ {{m.likes}} likes</div>
-
-<button onclick="generate('{{m.name}}','code{{loop.index}}')">
-Generate SDK Command
-</button>
-
-<div class="code" id="code{{loop.index}}"></div>
-
-</div>
-
-{% endfor %}
-
-</div>
-
-<script>
-
-function generate(model,id){
-
-let code=`pip install opengradient
-
-import opengradient as og
-
-llm = og.LLM(private_key="YOUR_PRIVATE_KEY")
-
-response = llm.chat(
-model="${model}",
-messages=[{"role":"user","content":"Hello"}]
-)
-
-print(response)
-`
-
-let box=document.getElementById(id)
-
-box.style.display="block"
-
-box.innerText=code
-
-}
-
-</script>
-
-</body>
-
-</html>
+if __name__=="__main__":
+    app.run(host="0.0.0.0",port=8080)
