@@ -317,6 +317,90 @@ feed.scrollTop=feed.scrollHeight
 setInterval(addFeed,3000)
 
 </script>
+<canvas id="map" width="900" height="400"></canvas>
+
+<style>
+
+#map{
+display:block;
+margin:40px auto;
+background:#04060c;
+border-radius:10px;
+box-shadow:0 0 30px #00f2ff33;
+}
+
+</style>
+
+<script>
+
+const canvas=document.getElementById("map")
+const ctx=canvas.getContext("2d")
+
+let nodes=[
+{name:"Meta-Llama-3-8B",x:200,y:120},
+{name:"ETH Predictor",x:500,y:100},
+{name:"Crypto Sentiment",x:350,y:250},
+{name:"Attention Flow",x:650,y:220}
+]
+
+function draw(){
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+for(let n of nodes){
+
+ctx.beginPath()
+ctx.arc(n.x,n.y,8,0,Math.PI*2)
+ctx.fillStyle="#00f2ff"
+ctx.fill()
+
+ctx.fillStyle="white"
+ctx.fillText(n.name,n.x+12,n.y+4)
+
+}
+
+}
+
+function animate(){
+
+for(let n of nodes){
+
+n.x+=Math.random()*2-1
+n.y+=Math.random()*2-1
+
+}
+
+draw()
+
+requestAnimationFrame(animate)
+
+}
+
+animate()
+
+canvas.onclick=function(e){
+
+let rect=canvas.getBoundingClientRect()
+
+let x=e.clientX-rect.left
+let y=e.clientY-rect.top
+
+for(let n of nodes){
+
+let dx=x-n.x
+let dy=y-n.y
+
+if(Math.sqrt(dx*dx+dy*dy)<10){
+
+alert("Model: "+n.name)
+
+}
+
+}
+
+}
+
+</script>
 
 </body>
 
