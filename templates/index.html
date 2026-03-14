@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>OpenGradient Intelligence Terminal</title>
+
+<style>
+
+body{
+background:#05070d;
+color:#00f2ff;
+font-family:monospace;
+margin:0;
+}
+
+.header{
+text-align:center;
+padding:40px;
+font-size:32px;
+}
+
+.terminal{
+max-width:900px;
+margin:auto;
+padding:20px;
+background:#0b0f1a;
+border-radius:10px;
+}
+
+.model{
+border-bottom:1px solid #1a2333;
+padding:15px;
+}
+
+.name{
+font-size:20px;
+color:white;
+}
+
+.category{
+color:#00f2ff;
+font-size:14px;
+}
+
+.description{
+margin-top:8px;
+color:#9bb3c9;
+}
+
+.prompt{
+margin-top:30px;
+color:#00f2ff;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+OpenGradient Intelligence Terminal
+</div>
+
+<div class="terminal">
+
+{% for m in models %}
+
+<div class="model">
+
+<div class="name">{{m.name}}</div>
+
+<div class="category">{{m.category}}</div>
+
+<div class="description">{{m.description}}</div>
+
+</div>
+
+{% endfor %}
+
+<div class="prompt">
+> Explore AI models built on OpenGradient infrastructure
+</div>
+
+</div>
+
+</body>
+
+</html>
