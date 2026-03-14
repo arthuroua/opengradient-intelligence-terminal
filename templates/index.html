@@ -9,11 +9,13 @@
 
 body{
 background:#04060c;
+color:#00f2ff;
 font-family:monospace;
 margin:0;
-color:#00f2ff;
 overflow-x:hidden;
 }
+
+/* animated grid */
 
 body::before{
 content:"";
@@ -21,10 +23,10 @@ position:fixed;
 width:200%;
 height:200%;
 background:
-linear-gradient(#00f2ff22 1px, transparent 1px),
-linear-gradient(90deg,#00f2ff22 1px, transparent 1px);
+linear-gradient(#00f2ff22 1px,transparent 1px),
+linear-gradient(90deg,#00f2ff22 1px,transparent 1px);
 background-size:60px 60px;
-animation:gridMove 25s linear infinite;
+animation:gridMove 20s linear infinite;
 }
 
 @keyframes gridMove{
@@ -52,13 +54,12 @@ margin-bottom:20px;
 .stat{
 background:#0b0f1a;
 padding:15px 25px;
-border-radius:8px;
-box-shadow:0 0 10px #00f2ff55;
-text-align:center;
+border-radius:10px;
+box-shadow:0 0 15px #00f2ff55;
 }
 
 .terminal{
-max-width:950px;
+max-width:900px;
 margin:auto;
 padding:25px;
 background:#0b0f1a;
@@ -66,10 +67,153 @@ border-radius:12px;
 box-shadow:0 0 30px #00f2ff33;
 }
 
-.search{
-width:100%;
-padding:10px;
-margin-bottom:20px;
+.model{
+border-bottom:1px solid #1a2333;
+padding:18px;
+transition:0.3s;
+}
+
+.model:hover{
+background:#111827;
+transform:scale(1.02);
+}
+
+.name{
+font-size:20px;
+color:white;
+}
+
+.category{
+font-size:13px;
+color:#00f2ff;
+}
+
+.description{
+margin-top:8px;
+color:#9bb3c9;
+}
+
+.cap{
+display:inline-block;
+background:#141a2b;
+padding:4px 8px;
+border-radius:6px;
+margin-right:5px;
+margin-top:6px;
+font-size:12px;
+}
+
+button{
+margin-top:10px;
+background:linear-gradient(90deg,#00f2ff,#8a2eff);
+border:none;
+padding:6px 12px;
+cursor:pointer;
+border-radius:6px;
+font-weight:bold;
+}
+
+.code{
 background:#04060c;
-border:1px solid #00f2ff55;
-color
+margin-top:10px;
+padding:10px;
+border-radius:6px;
+display:none;
+white-space:pre;
+color:#00f2ff;
+}
+
+.prompt{
+margin-top:25px;
+opacity:0.7;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+OpenGradient Intelligence Terminal
+</div>
+
+<div class="stats">
+
+<div class="stat">
+Models<br>
+<b>{{models|length}}</b>
+</div>
+
+<div class="stat">
+Network<br>
+<b>Active</b>
+</div>
+
+</div>
+
+<div class="terminal">
+
+{% for m in models %}
+
+<div class="model">
+
+<div class="name">{{m.name}}</div>
+
+<div class="category">{{m.category}}</div>
+
+<div class="description">{{m.description}}</div>
+
+{% for c in m.caps %}
+<span class="cap">{{c}}</span>
+{% endfor %}
+
+<br>
+
+<button onclick="generate('{{m.name}}')">
+Generate SDK Command
+</button>
+
+<div class="code" id="code-{{m.name}}"></div>
+
+</div>
+
+{% endfor %}
+
+<div class="prompt">
+> Explore AI models built on OpenGradient infrastructure
+</div>
+
+</div>
+
+<script>
+
+function generate(model){
+
+let code =
+`pip install opengradient
+
+import opengradient as og
+
+llm = og.LLM(private_key="YOUR_KEY")
+
+response = llm.chat(
+model="${model}",
+messages=[{"role":"user","content":"Hello"}]
+)
+
+print(response)
+`
+
+let box = document.getElementById("code-"+model)
+
+box.style.display="block"
+box.textContent=code
+
+}
+
+</script>
+
+</body>
+
+</html>
