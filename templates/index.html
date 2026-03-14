@@ -8,14 +8,14 @@
 <style>
 
 body{
-background:#04060c;
+background:#05070d;
 color:#00f2ff;
 font-family:monospace;
 margin:0;
 overflow-x:hidden;
 }
 
-/* animated grid */
+/* grid */
 
 body::before{
 content:"";
@@ -47,35 +47,29 @@ background:linear-gradient(90deg,#00f2ff,#8a2eff);
 .stats{
 display:flex;
 justify-content:center;
-gap:30px;
-margin-bottom:20px;
+gap:20px;
+margin-bottom:30px;
 }
 
 .stat{
 background:#0b0f1a;
-padding:15px 25px;
+padding:12px 20px;
 border-radius:10px;
-box-shadow:0 0 15px #00f2ff55;
+box-shadow:0 0 20px #00f2ff55;
 }
 
 .terminal{
 max-width:900px;
 margin:auto;
-padding:25px;
 background:#0b0f1a;
-border-radius:12px;
-box-shadow:0 0 30px #00f2ff33;
+border-radius:10px;
+padding:20px;
+box-shadow:0 0 30px #00f2ff22;
 }
 
 .model{
 border-bottom:1px solid #1a2333;
 padding:18px;
-transition:0.3s;
-}
-
-.model:hover{
-background:#111827;
-transform:scale(1.02);
 }
 
 .name{
@@ -89,7 +83,7 @@ color:#00f2ff;
 }
 
 .description{
-margin-top:8px;
+margin-top:6px;
 color:#9bb3c9;
 }
 
@@ -110,22 +104,30 @@ border:none;
 padding:6px 12px;
 cursor:pointer;
 border-radius:6px;
-font-weight:bold;
 }
 
 .code{
+display:none;
 background:#04060c;
 margin-top:10px;
 padding:10px;
 border-radius:6px;
-display:none;
 white-space:pre;
-color:#00f2ff;
 }
 
-.prompt{
-margin-top:25px;
-opacity:0.7;
+.signal{
+margin-top:8px;
+font-size:13px;
+}
+
+.feed{
+margin-top:30px;
+background:#04060c;
+padding:15px;
+border-radius:8px;
+max-height:200px;
+overflow:auto;
+font-size:13px;
 }
 
 </style>
@@ -142,7 +144,7 @@ OpenGradient Intelligence Terminal
 
 <div class="stat">
 Models<br>
-<b>{{models|length}}</b>
+<b id="modelCount">4</b>
 </div>
 
 <div class="stat">
@@ -152,68 +154,37 @@ Network<br>
 
 </div>
 
-<div class="terminal">
-
-{% for m in models %}
+<div class="terminal" id="models">
 
 <div class="model">
 
-<div class="name">{{m.name}}</div>
+<div class="name">Meta-Llama-3-8B-Instruct</div>
+<div class="category">LLM</div>
+<div class="description">Large language model optimized for chat and reasoning.</div>
 
-<div class="category">{{m.category}}</div>
+<span class="cap">Chat</span>
+<span class="cap">Reasoning</span>
+<span class="cap">Coding</span>
 
-<div class="description">{{m.description}}</div>
+<div class="signal" id="sig0"></div>
 
-{% for c in m.caps %}
-<span class="cap">{{c}}</span>
-{% endfor %}
-
-<br>
-
-<button onclick="generate('{{m.name}}')">
+<button onclick="generate('Meta-Llama-3-8B-Instruct',0)">
 Generate SDK Command
 </button>
 
-<div class="code" id="code-{{m.name}}"></div>
+<div class="code" id="code0"></div>
 
 </div>
 
-{% endfor %}
+<div class="model">
 
-<div class="prompt">
-> Explore AI models built on OpenGradient infrastructure
-</div>
+<div class="name">ETH Volatility Predictor</div>
+<div class="category">Finance</div>
+<div class="description">Predict ETH volatility using statistical models.</div>
 
-</div>
+<span class="cap">Forecast</span>
+<span class="cap">Analytics</span>
 
-<script>
+<div class="signal" id="sig1"></div>
 
-function generate(model){
-
-let code =
-`pip install opengradient
-
-import opengradient as og
-
-llm = og.LLM(private_key="YOUR_KEY")
-
-response = llm.chat(
-model="${model}",
-messages=[{"role":"user","content":"Hello"}]
-)
-
-print(response)
-`
-
-let box = document.getElementById("code-"+model)
-
-box.style.display="block"
-box.textContent=code
-
-}
-
-</script>
-
-</body>
-
-</html>
+<button onclick="generate('ETH V
