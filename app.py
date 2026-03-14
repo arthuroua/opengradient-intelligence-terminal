@@ -1,41 +1,28 @@
-from flask import Flask, render_template
+from flask import Flask, jsonify, render_template
 import requests
 
 app = Flask(__name__)
 
-API_URL="https://hub.opengradient.ai/api/models?page=0&limit=20&sort_by=most_likes"
+@app.route("/")
+def home():
+    return render_template("index.html")
 
-def get_models():
+@app.route("/models")
+def models():
+
+    url="https://hub.opengradient.ai/models?page=0&limit=10&sort_by=most_likes"
 
     try:
-        r=requests.get(API_URL,timeout=10)
 
-        data=r.json()
+        r=requests.get(url,headers={
+        "User-Agent":"Mozilla/5.0"
+        })
 
-        models=[]
-
-        for m in data.get("models",[]):
-
-            models.append({
-                "name":m.get("name","Unknown"),
-                "description":m.get("description","OpenGradient model"),
-                "likes":m.get("likes",0)
-            })
-
-        return models
+        return jsonify({"status":"ok","html":r.text[:1000]})
 
     except Exception as e:
 
-        print("API error:",e)
-
-        return []
-
-@app.route("/")
-def home():
-
-    models=get_models()
-
-    return render_template("index.html",models=models)
+        return jsonify({"status":"error","msg":str(e)})
 
 if __name__=="__main__":
     app.run(host="0.0.0.0",port=8080)
