@@ -8,83 +8,68 @@
 <style>
 
 body{
-background:#05070d;
-color:#00f2ff;
+background:#04060c;
 font-family:monospace;
 margin:0;
+color:#00f2ff;
+overflow-x:hidden;
+}
+
+body::before{
+content:"";
+position:fixed;
+width:200%;
+height:200%;
+background:
+linear-gradient(#00f2ff22 1px, transparent 1px),
+linear-gradient(90deg,#00f2ff22 1px, transparent 1px);
+background-size:60px 60px;
+animation:gridMove 25s linear infinite;
+}
+
+@keyframes gridMove{
+from{transform:translate(0,0)}
+to{transform:translate(-60px,-60px)}
 }
 
 .header{
 text-align:center;
 padding:40px;
-font-size:32px;
+font-size:36px;
+font-weight:bold;
+background:linear-gradient(90deg,#00f2ff,#8a2eff);
+-webkit-background-clip:text;
+-webkit-text-fill-color:transparent;
+}
+
+.stats{
+display:flex;
+justify-content:center;
+gap:30px;
+margin-bottom:20px;
+}
+
+.stat{
+background:#0b0f1a;
+padding:15px 25px;
+border-radius:8px;
+box-shadow:0 0 10px #00f2ff55;
+text-align:center;
 }
 
 .terminal{
-max-width:900px;
+max-width:950px;
 margin:auto;
-padding:20px;
+padding:25px;
 background:#0b0f1a;
-border-radius:10px;
+border-radius:12px;
+box-shadow:0 0 30px #00f2ff33;
 }
 
-.model{
-border-bottom:1px solid #1a2333;
-padding:15px;
-}
-
-.name{
-font-size:20px;
-color:white;
-}
-
-.category{
-color:#00f2ff;
-font-size:14px;
-}
-
-.description{
-margin-top:8px;
-color:#9bb3c9;
-}
-
-.prompt{
-margin-top:30px;
-color:#00f2ff;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="header">
-OpenGradient Intelligence Terminal
-</div>
-
-<div class="terminal">
-
-{% for m in models %}
-
-<div class="model">
-
-<div class="name">{{m.name}}</div>
-
-<div class="category">{{m.category}}</div>
-
-<div class="description">{{m.description}}</div>
-
-</div>
-
-{% endfor %}
-
-<div class="prompt">
-> Explore AI models built on OpenGradient infrastructure
-</div>
-
-</div>
-
-</body>
-
-</html>
+.search{
+width:100%;
+padding:10px;
+margin-bottom:20px;
+background:#04060c;
+border:1px solid #00f2ff55;
+color
