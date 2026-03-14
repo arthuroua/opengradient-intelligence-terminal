@@ -43,11 +43,6 @@ color:#9bb3c9;
 margin-top:5px;
 }
 
-.likes{
-color:#00f2ff;
-font-size:13px;
-}
-
 button{
 margin-top:10px;
 background:#00f2ff;
@@ -76,31 +71,35 @@ border-radius:6px;
 OpenGradient Intelligence Terminal
 </div>
 
-<div class="terminal">
+<div class="terminal" id="models">
 
-{% for m in models %}
-
-<div class="model">
-
-<div class="name">{{m.name}}</div>
-
-<div class="description">{{m.description}}</div>
-
-<div class="likes">❤ {{m.likes}} likes</div>
-
-<button onclick="generate('{{m.name}}','code{{loop.index}}')">
-Generate SDK Command
-</button>
-
-<div class="code" id="code{{loop.index}}"></div>
-
-</div>
-
-{% endfor %}
+Loading models...
 
 </div>
 
 <script>
+
+async function loadModels(){
+
+try{
+
+let res = await fetch(
+"https://hub.opengradient.ai/models?page=0&limit=10&sort_by=most_likes"
+)
+
+let html = await res.text()
+
+let container=document.getElementById("models")
+
+container.innerHTML="Model Hub connected"
+
+}catch(e){
+
+document.getElementById("models").innerHTML="Could not load models"
+
+}
+
+}
 
 function generate(model,id){
 
@@ -125,6 +124,8 @@ box.style.display="block"
 box.innerText=code
 
 }
+
+loadModels()
 
 </script>
 
