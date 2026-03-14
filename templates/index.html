@@ -28,6 +28,12 @@ padding:20px;
 border-radius:10px;
 }
 
+.status{
+padding:10px;
+margin-bottom:20px;
+color:#9bb3c9;
+}
+
 .model{
 border-bottom:1px solid #1a2333;
 padding:18px;
@@ -71,9 +77,43 @@ border-radius:6px;
 OpenGradient Intelligence Terminal
 </div>
 
-<div class="terminal" id="models">
+<div class="terminal">
 
-Loading models...
+<div id="status" class="status">
+Connecting to Model Hub...
+</div>
+
+<div class="model">
+
+<div class="name">Run OpenGradient SDK</div>
+
+<div class="description">
+Generate example code for running inference
+</div>
+
+<button onclick="generate('Meta-Llama-3-8B-Instruct','code1')">
+Generate SDK Command
+</button>
+
+<div class="code" id="code1"></div>
+
+</div>
+
+<div class="model">
+
+<div class="name">Run Finance Model</div>
+
+<div class="description">
+Example for ETH volatility predictor
+</div>
+
+<button onclick="generate('ETH Volatility Predictor','code2')">
+Generate SDK Command
+</button>
+
+<div class="code" id="code2"></div>
+
+</div>
 
 </div>
 
@@ -83,19 +123,23 @@ async function loadModels(){
 
 try{
 
-let res = await fetch(
-"https://hub.opengradient.ai/models?page=0&limit=10&sort_by=most_likes"
-)
+let res = await fetch("/models")
 
-let html = await res.text()
+let data = await res.json()
 
-let container=document.getElementById("models")
+if(data.status==="ok"){
 
-container.innerHTML="Model Hub connected"
+document.getElementById("status").innerText="Connected to OpenGradient Model Hub"
+
+}else{
+
+document.getElementById("status").innerText="Model Hub connection failed"
+
+}
 
 }catch(e){
 
-document.getElementById("models").innerHTML="Could not load models"
+document.getElementById("status").innerText="Could not connect to Model Hub"
 
 }
 
