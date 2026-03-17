@@ -87,6 +87,7 @@ X402_DEFAULT_MODEL = os.getenv("X402_DEFAULT_MODEL", "google/gemini-2.5-flash")
 X402_DEFAULT_SETTLEMENT = os.getenv("X402_DEFAULT_SETTLEMENT", "private")
 X402_FALLBACK_ENDPOINTS = os.getenv("X402_FALLBACK_ENDPOINTS", "https://13.59.207.188/v1/chat/completions")
 ENABLE_WIKI_FALLBACK = os.getenv("ENABLE_WIKI_FALLBACK", "true").strip().lower() in ("1", "true", "yes", "on")
+BUILD_MARKER = "no_manual_x402_v2"
 
 _approval_lock = threading.Lock()
 _x402_backend_approval_ready = False
@@ -712,7 +713,7 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                     return call_offline_fallback(prompt), "offline_fallback"
 
             if manual_x402_message:
-                return manual_x402_message, "x402_prepare_required"
+                return call_offline_fallback(prompt), "offline_fallback"
 
             if _is_402_error(sdk_exc):
                 try:
@@ -726,20 +727,11 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                         settlement=X402_DEFAULT_SETTLEMENT,
                     )
                     if status_code == 402:
-                        requirement_preview = str(headers)[:400]
-                        message = (
-                            "SDK returned 402. Payment is required and manual x402 flow is ready. "
-                            "Use the Raw x402 Gateway block: click Prepare, sign payload, paste X-PAYMENT (or PAYMENT-SIGNATURE), then Submit. "
-                            f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}. "
-                            f"Auto-pay note: {str(x402_exc)[:200]}"
-                        )
-                        return message, "x402_prepare_required"
+                        return call_offline_fallback(prompt), "offline_fallback"
                 except Exception:
                     pass
 
-            raise RuntimeError(
-                f"TEE LLM chat failed. x402 error: {str(x402_exc)[:220]} | sdk error: {str(sdk_exc)[:220]}"
-            )
+            return call_offline_fallback(prompt), "offline_fallback"
 
 
 def call_openai(prompt: str) -> str:
@@ -929,6 +921,7 @@ def health():
             "x402_decode_required_available": decode_payment_required_header is not None,
             "x402_import_errors": X402_IMPORT_ERRORS[:3],
             "wiki_fallback_enabled": ENABLE_WIKI_FALLBACK,
+            "build_marker": BUILD_MARKER,
         }
     )
 
