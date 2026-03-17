@@ -1,8 +1,11 @@
 ﻿import asyncio
+import base64
+import json
 import os
 import re
 import tempfile
 import threading
+import time
 from typing import Any
 from urllib.parse import urlparse
 import requests
@@ -239,6 +242,13 @@ def _pick_payment_requirement(payment_required):
     return accepts[0]
 
 
+def _parse_chain_id(network: str) -> int:
+    value = str(network or "").strip()
+    if ":" in value:
+        value = value.split(":")[-1]
+    return int(value, 10)
+
+
 class _LocalEthAccountSigner:
     def __init__(self, account):
         self._account = account
@@ -289,6 +299,88 @@ class _LocalEthAccountSigner:
             message_data=message,
         )
         return bytes(signed.signature)
+
+
+def _build_legacy_xpayment_header(payment_required_header: str) -> str:
+    if EthAccount is None or decode_payment_required_header is None:
+        raise RuntimeError("legacy x402 signer dependencies are unavailable")
+
+    private_key = os.getenv("OG_PRIVATE_KEY")
+    if not private_key:
+        raise RuntimeError("OG_PRIVATE_KEY is required for x402 payment signing")
+
+    payment_required = decode_payment_required_header(payment_required_header)
+    selected = _pick_payment_requirement(payment_required)
+    account = EthAccount.from_key(private_key)
+
+    network = str(getattr(selected, "network", "") or "")
+    pay_to = str(getattr(selected, "pay_to", None) or getattr(selected, "payTo", ""))
+    amount = str(
+        getattr(selected, "max_amount_required", None)
+        or getattr(selected, "amount", None)
+        or "0"
+    )
+    max_timeout = int(getattr(selected, "max_timeout_seconds", 600) or 600)
+    extra = getattr(selected, "extra", {}) or {}
+
+    if not pay_to or amount == "0":
+        raise RuntimeError("legacy x402 signer could not resolve pay_to/amount")
+
+    valid_after = int(time.time()) - 60
+    valid_before = int(time.time()) + max_timeout
+    nonce_hex = os.urandom(32).hex()
+
+    signed = account.sign_typed_data(
+        domain_data={
+            "name": str(extra.get("name") or "OPG"),
+            "version": str(extra.get("version") or "1"),
+            "chainId": _parse_chain_id(network),
+            "verifyingContract": str(getattr(selected, "asset", "")),
+        },
+        message_types={
+            "TransferWithAuthorization": [
+                {"name": "from", "type": "address"},
+                {"name": "to", "type": "address"},
+                {"name": "value", "type": "uint256"},
+                {"name": "validAfter", "type": "uint256"},
+                {"name": "validBefore", "type": "uint256"},
+                {"name": "nonce", "type": "bytes32"},
+            ]
+        },
+        message_data={
+            "from": account.address,
+            "to": pay_to,
+            "value": int(amount),
+            "validAfter": valid_after,
+            "validBefore": valid_before,
+            "nonce": bytes.fromhex(nonce_hex),
+        },
+    )
+
+    signature = signed.signature.hex()
+    if not signature.startswith("0x"):
+        signature = f"0x{signature}"
+
+    payload = {
+        "x402Version": int(getattr(payment_required, "x402_version", 2) or 2),
+        "scheme": str(getattr(selected, "scheme", "upto") or "upto"),
+        "network": network,
+        "payload": {
+            "signature": signature,
+            "authorization": {
+                "from": account.address,
+                "to": pay_to,
+                "value": amount,
+                "validAfter": str(valid_after),
+                "validBefore": str(valid_before),
+                "nonce": f"0x{nonce_hex}",
+            },
+        },
+    }
+
+    return base64.b64encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    ).decode("utf-8")
 
 
 def _sign_payment_required_header(payment_required_header: str) -> str:
@@ -349,12 +441,18 @@ def _sign_payment_required_header(payment_required_header: str) -> str:
         payload = client.create_payment_payload(payment_required)
         return encode_payment_signature_header(payload)
 
-    raise RuntimeError(
-        "x402 signer dependencies are unavailable in this runtime "
-        f"(X402ClientSync={X402ClientSync is not None}, "
-        f"X402ExactEvmClientScheme={X402ExactEvmClientScheme is not None}, "
-        f"encode_payment_signature_header={encode_payment_signature_header is not None}, "
-        f"errors={X402_IMPORT_ERRORS[:3]})"
+    # Last-resort fallback: generate legacy X-PAYMENT format.
+    return _build_legacy_xpayment_header(payment_required_header)
+
+
+def _needs_legacy_retry(status_code: int, body: Any) -> bool:
+    if status_code < 500:
+        return False
+    text = str(body or "").lower()
+    return (
+        "facilitator verify failed" in text
+        or "reading 'from'" in text
+        or 'reading "from"' in text
     )
 
 
@@ -394,8 +492,10 @@ def _x402_auto_pay_request(
     }
     if payment_required.x402_version == 2:
         headers_retry[PAYMENT_SIGNATURE_HEADER] = signed
+        headers_retry[X_PAYMENT_HEADER] = signed
     else:
         headers_retry[X_PAYMENT_HEADER] = signed
+        headers_retry[PAYMENT_SIGNATURE_HEADER] = signed
 
     api_key = os.getenv("OG_API_KEY")
     if api_key:
@@ -413,6 +513,37 @@ def _x402_auto_pay_request(
         body_retry: Any = response.json()
     except Exception:
         body_retry = response.text
+
+    if _needs_legacy_retry(response.status_code, body_retry):
+        legacy_signed = _build_legacy_xpayment_header(payment_required_header)
+        headers_retry_legacy = {
+            "Content-Type": "application/json",
+            "X-SETTLEMENT-TYPE": (settlement or X402_DEFAULT_SETTLEMENT).strip().lower(),
+            X_PAYMENT_HEADER: legacy_signed,
+            PAYMENT_SIGNATURE_HEADER: legacy_signed,
+        }
+        if api_key:
+            headers_retry_legacy["Authorization"] = f"Bearer {api_key}"
+
+        legacy_response, legacy_endpoint = _post_x402_with_fallback(
+            headers=headers_retry_legacy,
+            payload={
+                "model": (model or X402_DEFAULT_MODEL).strip(),
+                "messages": messages,
+                "max_tokens": max_tokens,
+            },
+        )
+        try:
+            legacy_body: Any = legacy_response.json()
+        except Exception:
+            legacy_body = legacy_response.text
+        return (
+            legacy_response.status_code,
+            _extract_x402_headers(legacy_response.headers),
+            legacy_body,
+            legacy_endpoint,
+        )
+
     return (
         response.status_code,
         _extract_x402_headers(response.headers),
