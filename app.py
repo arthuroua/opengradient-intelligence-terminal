@@ -511,71 +511,71 @@ def call_opengradient_sdk(prompt: str) -> str:
 
 
 def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
+    # Prefer direct x402 flow first because SDK runtime can be unstable in some deployments.
     try:
-        return call_opengradient_sdk(prompt), "opengradient_sdk"
-    except Exception as exc:
-        if not _is_402_error(exc):
-            raise
-
-        try:
-            status_code, headers, body, endpoint_used = _x402_auto_pay_request(
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                model=X402_DEFAULT_MODEL,
-                max_tokens=300,
-                settlement=X402_DEFAULT_SETTLEMENT,
-            )
-        except Exception as auto_exc:
-            try:
-                status_code, headers, _body, endpoint_used = _x402_prepare_request(
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    model=X402_DEFAULT_MODEL,
-                    max_tokens=300,
-                    settlement=X402_DEFAULT_SETTLEMENT,
-                )
-                if status_code == 402:
-                    requirement_preview = str(headers)[:400]
-                    message = (
-                        "SDK returned 402. Payment is required and manual x402 flow is ready. "
-                        "Use the Raw x402 Gateway block: click Prepare, sign payload, paste X-PAYMENT (or PAYMENT-SIGNATURE), then Submit. "
-                        f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}. "
-                        f"Auto-pay note: {str(auto_exc)[:200]}"
-                    )
-                    return message, "x402_prepare_required"
-            except Exception:
-                pass
-
-            message = (
-                "SDK returned 402 and automatic x402 payment is unavailable in this deployment. "
-                "Use the Raw x402 Gateway block: click Prepare, then Submit with signed payment. "
-                f"Auto-pay error: {str(auto_exc)[:300]}"
-            )
-            return message, "x402_prepare_required"
-
+        status_code, headers, body, endpoint_used = _x402_auto_pay_request(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            model=X402_DEFAULT_MODEL,
+            max_tokens=300,
+            settlement=X402_DEFAULT_SETTLEMENT,
+        )
         if status_code == 200:
-            try:
-                content = body["choices"][0]["message"]["content"].strip()
-                if content:
-                    return content, "x402_gateway_auto_paid"
-            except Exception:
-                pass
+            content = ""
+            if isinstance(body, dict):
+                try:
+                    content = ((body.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+                except Exception:
+                    content = ""
+            if content and str(content).strip():
+                return str(content).strip(), "x402_gateway_auto_paid"
+            if isinstance(body, str) and body.strip():
+                return body.strip(), "x402_gateway_auto_paid"
+            return str(body)[:1000], "x402_gateway_auto_paid"
 
         if status_code == 402:
             requirement_preview = str(headers)[:400]
             message = (
-                "SDK returned 402 and automatic x402 payment did not complete. "
-                "Use the Raw x402 Gateway block: click Prepare, sign payment payload, "
-                "paste X-PAYMENT (or PAYMENT-SIGNATURE), then click Submit. "
+                "Payment is required and manual x402 flow is ready. "
+                "Use the Raw x402 Gateway block: click Prepare, sign payload, paste X-PAYMENT (or PAYMENT-SIGNATURE), then Submit. "
                 f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}"
             )
             return message, "x402_prepare_required"
 
-        raise RuntimeError(f"x402 fallback failed with status {status_code}: {str(body)[:400]}")
+        raise RuntimeError(f"x402 auto-pay failed with status {status_code}: {str(body)[:400]}")
+    except Exception as x402_exc:
+        # Fallback to SDK only if direct x402 failed.
+        try:
+            return call_opengradient_sdk(prompt), "opengradient_sdk"
+        except Exception as sdk_exc:
+            if _is_402_error(sdk_exc):
+                try:
+                    status_code, headers, _body, endpoint_used = _x402_prepare_request(
+                        messages=[
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": prompt},
+                        ],
+                        model=X402_DEFAULT_MODEL,
+                        max_tokens=300,
+                        settlement=X402_DEFAULT_SETTLEMENT,
+                    )
+                    if status_code == 402:
+                        requirement_preview = str(headers)[:400]
+                        message = (
+                            "SDK returned 402. Payment is required and manual x402 flow is ready. "
+                            "Use the Raw x402 Gateway block: click Prepare, sign payload, paste X-PAYMENT (or PAYMENT-SIGNATURE), then Submit. "
+                            f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}. "
+                            f"Auto-pay note: {str(x402_exc)[:200]}"
+                        )
+                        return message, "x402_prepare_required"
+                except Exception:
+                    pass
+
+            raise RuntimeError(
+                f"TEE LLM chat failed. x402 error: {str(x402_exc)[:220]} | sdk error: {str(sdk_exc)[:220]}"
+            )
 
 
 def call_openai(prompt: str) -> str:
