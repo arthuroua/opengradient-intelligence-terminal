@@ -1,12 +1,14 @@
 ﻿import asyncio
 import os
+import re
 import tempfile
 import threading
 from typing import Any
-
+from urllib.parse import urlparse
 import requests
+import urllib3
 from flask import Flask, jsonify, render_template, request
-
+from urllib3.exceptions import InsecureRequestWarning
 try:
     import opengradient as og
 except Exception:
@@ -40,7 +42,7 @@ X402_DEFAULT_SETTLEMENT = os.getenv("X402_DEFAULT_SETTLEMENT", "private")
 X402_FALLBACK_ENDPOINTS = os.getenv("X402_FALLBACK_ENDPOINTS", "https://13.59.207.188/v1/chat/completions")
 
 _approval_lock = threading.Lock()
-
+urllib3.disable_warnings(InsecureRequestWarning)
 
 def _json_error(message: str, status: int = 500, details: Any | None = None):
     payload = {"error": message}
@@ -88,11 +90,14 @@ def _post_x402_with_fallback(headers: dict[str, str], payload: dict[str, Any]) -
     last_exc: Exception | None = None
     for endpoint in _get_x402_candidate_endpoints():
         try:
+            host = (urlparse(endpoint).hostname or "").strip()
+            is_ipv4 = bool(re.match(r"^\d{1,3}(\.\d{1,3}){3}$", host))
             response = requests.post(
                 endpoint,
                 headers=headers,
                 json=payload,
                 timeout=REQUEST_TIMEOUT,
+                verify=not is_ipv4,
             )
             return response, endpoint
         except requests.RequestException as exc:
@@ -111,6 +116,7 @@ def _post_x402_with_fallback(headers: dict[str, str], payload: dict[str, Any]) -
     if last_exc is not None:
         raise last_exc
     raise RuntimeError("x402 request failed: no endpoints available")
+
 def _is_402_error(exc: Exception) -> bool:
     msg = str(exc).lower()
     return "402" in msg and "payment required" in msg
@@ -781,6 +787,7 @@ def alpha_read_workflow_result():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
