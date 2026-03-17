@@ -95,6 +95,14 @@ def _extract_x402_headers(headers: requests.structures.CaseInsensitiveDict) -> d
     return out
 
 
+def _get_header_case_insensitive(headers: dict[str, str], target_name: str) -> str | None:
+    target = target_name.lower()
+    for key, value in headers.items():
+        if key.lower() == target:
+            return value
+    return None
+
+
 
 
 def _get_x402_candidate_endpoints() -> list[str]:
@@ -231,7 +239,7 @@ def _x402_auto_pay_request(
     if status_code != 402:
         return status_code, headers, body, endpoint_used
 
-    payment_required_header = headers.get(PAYMENT_REQUIRED_HEADER)
+    payment_required_header = _get_header_case_insensitive(headers, PAYMENT_REQUIRED_HEADER)
     if not payment_required_header:
         raise RuntimeError("x402 returned 402 but missing PAYMENT-REQUIRED header")
 
