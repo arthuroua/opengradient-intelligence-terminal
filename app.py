@@ -96,9 +96,12 @@ def _extract_x402_headers(headers: requests.structures.CaseInsensitiveDict) -> d
 
 
 def _get_header_case_insensitive(headers: dict[str, str], target_name: str) -> str | None:
-    target = target_name.lower()
+    target = target_name.strip().lower()
     for key, value in headers.items():
-        if key.lower() == target:
+        normalized_key = key.strip().lower().replace("_", "-")
+        if normalized_key == target:
+            return value
+        if target == "payment-required" and "payment-required" in normalized_key:
             return value
     return None
 
@@ -241,7 +244,13 @@ def _x402_auto_pay_request(
 
     payment_required_header = _get_header_case_insensitive(headers, PAYMENT_REQUIRED_HEADER)
     if not payment_required_header:
-        raise RuntimeError("x402 returned 402 but missing PAYMENT-REQUIRED header")
+        for alt_name in ("Payment-Required", "PAYMENT-REQUIRED", "payment-required"):
+            payment_required_header = _get_header_case_insensitive(headers, alt_name)
+            if payment_required_header:
+                break
+    if not payment_required_header:
+        available_keys = ",".join(list(headers.keys())[:20])
+        raise RuntimeError(f"x402 returned 402 but missing PAYMENT-REQUIRED header; available headers: {available_keys}")
 
     payment_required = decode_payment_required_header(payment_required_header)
     signed = _sign_payment_required_header(payment_required_header)
