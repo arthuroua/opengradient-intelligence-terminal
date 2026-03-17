@@ -23,13 +23,25 @@ except Exception:
         X402Client = None
 
 try:
+    from x402 import x402ClientSync as X402ClientSync
+except Exception:
+    X402ClientSync = None
+
+try:
+    from x402.mechanisms.evm.exact import ExactEvmClientScheme as X402ExactEvmClientScheme
+except Exception:
+    X402ExactEvmClientScheme = None
+
+try:
     from x402.http import (
+        encode_payment_signature_header,
         PAYMENT_REQUIRED_HEADER,
         PAYMENT_SIGNATURE_HEADER,
         X_PAYMENT_HEADER,
         decode_payment_required_header,
     )
 except Exception:
+    encode_payment_signature_header = None
     PAYMENT_REQUIRED_HEADER = "Payment-Required"
     PAYMENT_SIGNATURE_HEADER = "PAYMENT-SIGNATURE"
     X_PAYMENT_HEADER = "X-PAYMENT"
@@ -221,8 +233,60 @@ def _pick_payment_requirement(payment_required):
     return accepts[0]
 
 
+class _LocalEthAccountSigner:
+    def __init__(self, account):
+        self._account = account
+
+    @property
+    def address(self) -> str:
+        return self._account.address
+
+    def sign_typed_data(
+        self,
+        domain,
+        types,
+        primary_type,
+        message,
+    ) -> bytes:
+        types_dict: dict[str, list[dict[str, str]]] = {}
+        for type_name, fields in types.items():
+            parsed_fields = []
+            for field in fields:
+                if isinstance(field, dict):
+                    parsed_fields.append(
+                        {
+                            "name": str(field.get("name", "")),
+                            "type": str(field.get("type", "")),
+                        }
+                    )
+                else:
+                    parsed_fields.append(
+                        {
+                            "name": str(getattr(field, "name", "")),
+                            "type": str(getattr(field, "type", "")),
+                        }
+                    )
+            types_dict[type_name] = parsed_fields
+
+        domain_dict = domain
+        if not isinstance(domain, dict):
+            domain_dict = {
+                "name": getattr(domain, "name", None),
+                "version": getattr(domain, "version", None),
+                "chainId": getattr(domain, "chain_id", None),
+                "verifyingContract": getattr(domain, "verifying_contract", None),
+            }
+
+        signed = self._account.sign_typed_data(
+            domain_data=domain_dict,
+            message_types=types_dict,
+            message_data=message,
+        )
+        return bytes(signed.signature)
+
+
 def _sign_payment_required_header(payment_required_header: str) -> str:
-    if EthAccount is None or X402Client is None or decode_payment_required_header is None:
+    if EthAccount is None or decode_payment_required_header is None:
         raise RuntimeError("x402 signer dependencies are unavailable in this runtime")
 
     private_key = os.getenv("OG_PRIVATE_KEY")
@@ -230,13 +294,53 @@ def _sign_payment_required_header(payment_required_header: str) -> str:
         raise RuntimeError("OG_PRIVATE_KEY is required for x402 payment signing")
 
     payment_required = decode_payment_required_header(payment_required_header)
-    selected = _pick_payment_requirement(payment_required)
     account = EthAccount.from_key(private_key)
-    x402_client = X402Client(account=account)
-    return x402_client.create_payment_header(
-        selected,
-        x402_version=payment_required.x402_version,
-    )
+
+    # Compatibility path for older x402 APIs that expose x402.clients.*
+    if X402Client is not None:
+        try:
+            selected = _pick_payment_requirement(payment_required)
+            x402_client = X402Client(account=account)
+            return x402_client.create_payment_header(
+                selected,
+                x402_version=payment_required.x402_version,
+            )
+        except TypeError:
+            pass
+        except Exception:
+            pass
+
+    # x402>=2.0 path
+    if (
+        X402ClientSync is not None
+        and X402ExactEvmClientScheme is not None
+        and encode_payment_signature_header is not None
+    ):
+        selected = _pick_payment_requirement(payment_required)
+
+        def _selector(_version, requirements):
+            for req in requirements:
+                if (
+                    getattr(req, "network", None) == getattr(selected, "network", None)
+                    and getattr(req, "asset", None) == getattr(selected, "asset", None)
+                    and getattr(req, "scheme", None) == getattr(selected, "scheme", None)
+                ):
+                    return req
+            return requirements[0]
+
+        client = X402ClientSync(payment_requirements_selector=_selector)
+        signer = _LocalEthAccountSigner(account)
+        scheme = X402ExactEvmClientScheme(signer)
+        if getattr(selected, "scheme", None):
+            try:
+                scheme.scheme = str(getattr(selected, "scheme"))
+            except Exception:
+                pass
+        client.register(str(getattr(selected, "network", "eip155:*")), scheme)
+        payload = client.create_payment_payload(payment_required)
+        return encode_payment_signature_header(payload)
+
+    raise RuntimeError("x402 signer dependencies are unavailable in this runtime")
 
 
 def _x402_auto_pay_request(
