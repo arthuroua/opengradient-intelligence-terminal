@@ -106,6 +106,18 @@ def _get_header_case_insensitive(headers: dict[str, str], target_name: str) -> s
     return None
 
 
+def _get_payment_required_from_body(body: Any) -> str | None:
+    if not isinstance(body, dict):
+        return None
+
+    # Some gateways/proxies can forward payment requirements inside JSON body.
+    for key, value in body.items():
+        k = str(key).strip().lower().replace("_", "-")
+        if "payment-required" in k and isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 
 
 def _get_x402_candidate_endpoints() -> list[str]:
@@ -248,6 +260,8 @@ def _x402_auto_pay_request(
             payment_required_header = _get_header_case_insensitive(headers, alt_name)
             if payment_required_header:
                 break
+    if not payment_required_header:
+        payment_required_header = _get_payment_required_from_body(body)
     if not payment_required_header:
         available_keys = ",".join(list(headers.keys())[:20])
         raise RuntimeError(f"x402 returned 402 but missing PAYMENT-REQUIRED header; available headers: {available_keys}")
@@ -395,6 +409,28 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                 settlement=X402_DEFAULT_SETTLEMENT,
             )
         except Exception as auto_exc:
+            try:
+                status_code, headers, _body, endpoint_used = _x402_prepare_request(
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    model=X402_DEFAULT_MODEL,
+                    max_tokens=300,
+                    settlement=X402_DEFAULT_SETTLEMENT,
+                )
+                if status_code == 402:
+                    requirement_preview = str(headers)[:400]
+                    message = (
+                        "SDK returned 402. Payment is required and manual x402 flow is ready. "
+                        "Use the Raw x402 Gateway block: click Prepare, sign payload, paste X-PAYMENT (or PAYMENT-SIGNATURE), then Submit. "
+                        f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}. "
+                        f"Auto-pay note: {str(auto_exc)[:200]}"
+                    )
+                    return message, "x402_prepare_required"
+            except Exception:
+                pass
+
             message = (
                 "SDK returned 402 and automatic x402 payment is unavailable in this deployment. "
                 "Use the Raw x402 Gateway block: click Prepare, then Submit with signed payment. "
@@ -645,8 +681,9 @@ def x402_prepare():
 
         auto_payment_signature = None
         auto_sign_error = None
+        x402_headers = _extract_x402_headers(response.headers)
         if response.status_code == 402:
-            payment_required_header = _extract_x402_headers(response.headers).get(PAYMENT_REQUIRED_HEADER)
+            payment_required_header = _get_header_case_insensitive(x402_headers, PAYMENT_REQUIRED_HEADER)
             if payment_required_header and os.getenv("OG_PRIVATE_KEY"):
                 try:
                     auto_payment_signature = _sign_payment_required_header(payment_required_header)
@@ -658,7 +695,7 @@ def x402_prepare():
                 "ok": response.status_code in (200, 402),
                 "status_code": response.status_code,
                 "endpoint_used": endpoint_used,
-                "headers": _extract_x402_headers(response.headers),
+                "headers": x402_headers,
                 "body": body,
                 "auto_payment_signature": auto_payment_signature,
                 "auto_sign_error": auto_sign_error,
