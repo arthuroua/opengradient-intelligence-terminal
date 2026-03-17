@@ -67,6 +67,45 @@ def _extract_x402_headers(headers: requests.structures.CaseInsensitiveDict) -> d
     return out
 
 
+
+def _is_402_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "402" in msg and "payment required" in msg
+
+
+def _x402_prepare_request(
+    messages: list[dict[str, str]],
+    model: str | None = None,
+    max_tokens: int = 300,
+    settlement: str | None = None,
+) -> tuple[int, dict[str, str], Any]:
+    headers = {
+        "Content-Type": "application/json",
+        "X-SETTLEMENT-TYPE": (settlement or X402_DEFAULT_SETTLEMENT).strip().lower(),
+    }
+    api_key = os.getenv("OG_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    response = requests.post(
+        X402_ENDPOINT,
+        headers=headers,
+        json={
+            "model": (model or X402_DEFAULT_MODEL).strip(),
+            "messages": messages,
+            "max_tokens": max_tokens,
+        },
+        timeout=REQUEST_TIMEOUT,
+    )
+
+    body: Any
+    try:
+        body = response.json()
+    except Exception:
+        body = response.text
+    return response.status_code, _extract_x402_headers(response.headers), body
+
+
 def _resolve_og_model():
     if og is None:
         raise RuntimeError("opengradient package is not available")
@@ -153,6 +192,45 @@ async def call_opengradient_sdk_async(prompt: str) -> str:
 
 def call_opengradient_sdk(prompt: str) -> str:
     return _run_async(call_opengradient_sdk_async(prompt))
+
+
+
+def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
+    try:
+        return call_opengradient_sdk(prompt), "opengradient_sdk"
+    except Exception as exc:
+        if not _is_402_error(exc):
+            raise
+
+        status_code, headers, body = _x402_prepare_request(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            model=X402_DEFAULT_MODEL,
+            max_tokens=300,
+            settlement=X402_DEFAULT_SETTLEMENT,
+        )
+
+        if status_code == 200:
+            try:
+                content = body["choices"][0]["message"]["content"].strip()
+                if content:
+                    return content, "x402_gateway"
+            except Exception:
+                pass
+
+        if status_code == 402:
+            requirement_preview = str(headers)[:400]
+            message = (
+                "SDK returned 402. x402 payment is required. "
+                "Use the Raw x402 Gateway block: click Prepare, sign payment payload, "
+                "paste X-PAYMENT, then click Submit. "
+                f"Payment headers: {requirement_preview}"
+            )
+            return message, "x402_prepare_required"
+
+        raise RuntimeError(f"x402 fallback failed with status {status_code}: {str(body)[:400]}")
 
 
 def call_openai(prompt: str) -> str:
@@ -257,10 +335,9 @@ def generate_reply(prompt: str) -> tuple[str, str]:
     if provider == "opengradient":
         return call_opengradient_http(prompt), "opengradient"
     if provider == "opengradient_sdk":
-        return call_opengradient_sdk(prompt), "opengradient_sdk"
-
+        return call_opengradient_sdk_with_x402_fallback(prompt)
     for name, fn in (
-        ("opengradient_sdk", call_opengradient_sdk),
+        ("opengradient_sdk", lambda p: call_opengradient_sdk_with_x402_fallback(p)[0]),
         ("openai", call_openai),
         ("gemini", call_gemini),
         ("opengradient", call_opengradient_http),
@@ -663,4 +740,8 @@ def alpha_read_workflow_result():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
+
+
+
+
 
