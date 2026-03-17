@@ -709,7 +709,7 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                 try:
                     return call_wikipedia_fallback(prompt), "wikipedia_fallback"
                 except Exception:
-                    pass
+                    return call_offline_fallback(prompt), "offline_fallback"
 
             if manual_x402_message:
                 return manual_x402_message, "x402_prepare_required"
@@ -867,6 +867,17 @@ def call_wikipedia_fallback(prompt: str) -> str:
     if not extract:
         raise RuntimeError("Wikipedia returned empty summary")
     return extract
+
+
+def call_offline_fallback(prompt: str) -> str:
+    short = (prompt or "").strip()
+    if len(short) > 160:
+        short = short[:160] + "..."
+    return (
+        "OpenGradient gateway is temporarily unstable, so this response uses local fallback mode. "
+        f"Your prompt was: \"{short}\". "
+        "Try again in a minute for full TEE/x402 inference."
+    )
 
 
 def generate_reply(prompt: str) -> tuple[str, str]:
