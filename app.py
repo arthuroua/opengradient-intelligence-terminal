@@ -38,7 +38,6 @@ X402_ENDPOINT = os.getenv("X402_ENDPOINT", "https://llm.opengradient.ai/v1/chat/
 X402_DEFAULT_MODEL = os.getenv("X402_DEFAULT_MODEL", "google/gemini-2.5-flash")
 X402_DEFAULT_SETTLEMENT = os.getenv("X402_DEFAULT_SETTLEMENT", "private")
 
-_approval_checked = False
 _approval_lock = threading.Lock()
 
 
@@ -93,16 +92,8 @@ def _resolve_settlement_mode():
 
 
 def _ensure_approval_once(llm):
-    global _approval_checked
-
-    if _approval_checked:
-        return
-
     with _approval_lock:
-        if _approval_checked:
-            return
         llm.ensure_opg_approval(opg_amount=OG_APPROVAL_OPG_AMOUNT)
-        _approval_checked = True
 
 
 def _get_hub():
@@ -672,3 +663,4 @@ def alpha_read_workflow_result():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
+
