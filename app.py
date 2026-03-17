@@ -9,14 +9,31 @@ import requests
 import urllib3
 from flask import Flask, jsonify, render_template, request
 from urllib3.exceptions import InsecureRequestWarning
-from eth_account import Account as EthAccount
-from x402.clients.base import x402Client as X402Client
-from x402.http import (
-    PAYMENT_REQUIRED_HEADER,
-    PAYMENT_SIGNATURE_HEADER,
-    X_PAYMENT_HEADER,
-    decode_payment_required_header,
-)
+try:
+    from eth_account import Account as EthAccount
+except Exception:
+    EthAccount = None
+
+try:
+    from x402.clients.base import x402Client as X402Client
+except Exception:
+    try:
+        from x402.clients.requests import x402Client as X402Client
+    except Exception:
+        X402Client = None
+
+try:
+    from x402.http import (
+        PAYMENT_REQUIRED_HEADER,
+        PAYMENT_SIGNATURE_HEADER,
+        X_PAYMENT_HEADER,
+        decode_payment_required_header,
+    )
+except Exception:
+    PAYMENT_REQUIRED_HEADER = "Payment-Required"
+    PAYMENT_SIGNATURE_HEADER = "PAYMENT-SIGNATURE"
+    X_PAYMENT_HEADER = "X-PAYMENT"
+    decode_payment_required_header = None
 try:
     import opengradient as og
 except Exception:
@@ -182,6 +199,9 @@ def _pick_payment_requirement(payment_required):
 
 
 def _sign_payment_required_header(payment_required_header: str) -> str:
+    if EthAccount is None or X402Client is None or decode_payment_required_header is None:
+        raise RuntimeError("x402 signer dependencies are unavailable in this runtime")
+
     private_key = os.getenv("OG_PRIVATE_KEY")
     if not private_key:
         raise RuntimeError("OG_PRIVATE_KEY is required for x402 payment signing")
@@ -347,15 +367,23 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
         if not _is_402_error(exc):
             raise
 
-        status_code, headers, body, endpoint_used = _x402_auto_pay_request(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            model=X402_DEFAULT_MODEL,
-            max_tokens=300,
-            settlement=X402_DEFAULT_SETTLEMENT,
-        )
+        try:
+            status_code, headers, body, endpoint_used = _x402_auto_pay_request(
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                model=X402_DEFAULT_MODEL,
+                max_tokens=300,
+                settlement=X402_DEFAULT_SETTLEMENT,
+            )
+        except Exception as auto_exc:
+            message = (
+                "SDK returned 402 and automatic x402 payment is unavailable in this deployment. "
+                "Use the Raw x402 Gateway block: click Prepare, then Submit with signed payment. "
+                f"Auto-pay error: {str(auto_exc)[:300]}"
+            )
+            return message, "x402_prepare_required"
 
         if status_code == 200:
             try:
