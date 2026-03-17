@@ -37,6 +37,7 @@ OG_APPROVAL_OPG_AMOUNT = float(os.getenv("OG_APPROVAL_OPG_AMOUNT", "5"))
 X402_ENDPOINT = os.getenv("X402_ENDPOINT", "https://llm.opengradient.ai/v1/chat/completions")
 X402_DEFAULT_MODEL = os.getenv("X402_DEFAULT_MODEL", "google/gemini-2.5-flash")
 X402_DEFAULT_SETTLEMENT = os.getenv("X402_DEFAULT_SETTLEMENT", "private")
+X402_FALLBACK_ENDPOINTS = os.getenv("X402_FALLBACK_ENDPOINTS", "https://13.59.207.188/v1/chat/completions")
 
 _approval_lock = threading.Lock()
 
@@ -68,6 +69,48 @@ def _extract_x402_headers(headers: requests.structures.CaseInsensitiveDict) -> d
 
 
 
+
+def _get_x402_candidate_endpoints() -> list[str]:
+    candidates = [X402_ENDPOINT]
+    for endpoint in X402_FALLBACK_ENDPOINTS.split(","):
+        endpoint = endpoint.strip()
+        if endpoint:
+            candidates.append(endpoint)
+
+    deduped: list[str] = []
+    for endpoint in candidates:
+        if endpoint not in deduped:
+            deduped.append(endpoint)
+    return deduped
+
+
+def _post_x402_with_fallback(headers: dict[str, str], payload: dict[str, Any]) -> tuple[requests.Response, str]:
+    last_exc: Exception | None = None
+    for endpoint in _get_x402_candidate_endpoints():
+        try:
+            response = requests.post(
+                endpoint,
+                headers=headers,
+                json=payload,
+                timeout=REQUEST_TIMEOUT,
+            )
+            return response, endpoint
+        except requests.RequestException as exc:
+            msg = str(exc).lower()
+            dns_related = (
+                "failed to resolve" in msg
+                or "name or service not known" in msg
+                or "temporary failure in name resolution" in msg
+                or "no address associated with hostname" in msg
+            )
+            if dns_related:
+                last_exc = exc
+                continue
+            raise
+
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("x402 request failed: no endpoints available")
 def _is_402_error(exc: Exception) -> bool:
     msg = str(exc).lower()
     return "402" in msg and "payment required" in msg
@@ -78,7 +121,7 @@ def _x402_prepare_request(
     model: str | None = None,
     max_tokens: int = 300,
     settlement: str | None = None,
-) -> tuple[int, dict[str, str], Any]:
+) -> tuple[int, dict[str, str], Any, str]:
     headers = {
         "Content-Type": "application/json",
         "X-SETTLEMENT-TYPE": (settlement or X402_DEFAULT_SETTLEMENT).strip().lower(),
@@ -87,15 +130,13 @@ def _x402_prepare_request(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    response = requests.post(
-        X402_ENDPOINT,
+    response, endpoint_used = _post_x402_with_fallback(
         headers=headers,
-        json={
+        payload={
             "model": (model or X402_DEFAULT_MODEL).strip(),
             "messages": messages,
             "max_tokens": max_tokens,
         },
-        timeout=REQUEST_TIMEOUT,
     )
 
     body: Any
@@ -103,7 +144,7 @@ def _x402_prepare_request(
         body = response.json()
     except Exception:
         body = response.text
-    return response.status_code, _extract_x402_headers(response.headers), body
+    return response.status_code, _extract_x402_headers(response.headers), body, endpoint_used
 
 
 def _resolve_og_model():
@@ -202,7 +243,7 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
         if not _is_402_error(exc):
             raise
 
-        status_code, headers, body = _x402_prepare_request(
+        status_code, headers, body, endpoint_used = _x402_prepare_request(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
@@ -226,7 +267,7 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                 "SDK returned 402. x402 payment is required. "
                 "Use the Raw x402 Gateway block: click Prepare, sign payment payload, "
                 "paste X-PAYMENT, then click Submit. "
-                f"Payment headers: {requirement_preview}"
+                f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}"
             )
             return message, "x402_prepare_required"
 
@@ -366,6 +407,7 @@ def health():
             "og_settlement_mode": OG_SETTLEMENT_MODE,
             "model_hub_configured": bool(os.getenv("OG_HUB_EMAIL") and os.getenv("OG_HUB_PASSWORD")),
             "x402_endpoint": X402_ENDPOINT,
+            "x402_fallback_endpoints": X402_FALLBACK_ENDPOINTS,
         }
     )
 
@@ -389,6 +431,7 @@ def config():
             "modelHubConfigured": bool(os.getenv("OG_HUB_EMAIL") and os.getenv("OG_HUB_PASSWORD")),
             "alphaConfigured": bool(os.getenv("OG_ALPHA_PRIVATE_KEY") or os.getenv("OG_PRIVATE_KEY")),
             "x402Endpoint": X402_ENDPOINT,
+            "x402FallbackEndpoints": X402_FALLBACK_ENDPOINTS,
             "x402DefaultModel": X402_DEFAULT_MODEL,
             "x402DefaultSettlement": X402_DEFAULT_SETTLEMENT,
         }
@@ -436,15 +479,13 @@ def x402_prepare():
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
-        response = requests.post(
-            X402_ENDPOINT,
+        response, endpoint_used = _post_x402_with_fallback(
             headers=headers,
-            json={
+            payload={
                 "model": model,
                 "messages": messages,
                 "max_tokens": max_tokens,
             },
-            timeout=REQUEST_TIMEOUT,
         )
 
         body = None
@@ -457,6 +498,7 @@ def x402_prepare():
             {
                 "ok": response.status_code in (200, 402),
                 "status_code": response.status_code,
+                "endpoint_used": endpoint_used,
                 "headers": _extract_x402_headers(response.headers),
                 "body": body,
                 "hint": "If status_code is 402, sign payment payload client-side and call /api/x402/submit with x_payment",
@@ -491,15 +533,13 @@ def x402_submit():
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
-        response = requests.post(
-            X402_ENDPOINT,
+        response, endpoint_used = _post_x402_with_fallback(
             headers=headers,
-            json={
+            payload={
                 "model": model,
                 "messages": messages,
                 "max_tokens": max_tokens,
             },
-            timeout=REQUEST_TIMEOUT,
         )
 
         body = None
@@ -512,6 +552,7 @@ def x402_submit():
             {
                 "ok": response.status_code == 200,
                 "status_code": response.status_code,
+                "endpoint_used": endpoint_used,
                 "headers": _extract_x402_headers(response.headers),
                 "body": body,
             }
@@ -740,6 +781,9 @@ def alpha_read_workflow_result():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
+
+
+
 
 
 
