@@ -9,6 +9,8 @@ import requests
 import urllib3
 from flask import Flask, jsonify, render_template, request
 from urllib3.exceptions import InsecureRequestWarning
+
+X402_IMPORT_ERRORS: list[str] = []
 try:
     from eth_account import Account as EthAccount
 except Exception:
@@ -24,13 +26,16 @@ except Exception:
 
 try:
     from x402 import x402ClientSync as X402ClientSync
-except Exception:
+except Exception as exc:
     X402ClientSync = None
+    X402_IMPORT_ERRORS.append(f"x402ClientSync: {exc}")
 
 try:
-    from x402.mechanisms.evm.exact import ExactEvmClientScheme as X402ExactEvmClientScheme
-except Exception:
+    # Import directly from client submodule to avoid optional facilitator/web3 deps.
+    from x402.mechanisms.evm.exact.client import ExactEvmScheme as X402ExactEvmClientScheme
+except Exception as exc:
     X402ExactEvmClientScheme = None
+    X402_IMPORT_ERRORS.append(f"ExactEvmScheme(client): {exc}")
 
 try:
     from x402.http import (
@@ -40,12 +45,13 @@ try:
         X_PAYMENT_HEADER,
         decode_payment_required_header,
     )
-except Exception:
+except Exception as exc:
     encode_payment_signature_header = None
     PAYMENT_REQUIRED_HEADER = "Payment-Required"
     PAYMENT_SIGNATURE_HEADER = "PAYMENT-SIGNATURE"
     X_PAYMENT_HEADER = "X-PAYMENT"
     decode_payment_required_header = None
+    X402_IMPORT_ERRORS.append(f"x402.http: {exc}")
 try:
     import opengradient as og
 except Exception:
@@ -287,7 +293,10 @@ class _LocalEthAccountSigner:
 
 def _sign_payment_required_header(payment_required_header: str) -> str:
     if EthAccount is None or decode_payment_required_header is None:
-        raise RuntimeError("x402 signer dependencies are unavailable in this runtime")
+        raise RuntimeError(
+            "x402 signer dependencies are unavailable in this runtime "
+            f"(EthAccount={EthAccount is not None}, decode_payment_required_header={decode_payment_required_header is not None})"
+        )
 
     private_key = os.getenv("OG_PRIVATE_KEY")
     if not private_key:
@@ -340,7 +349,13 @@ def _sign_payment_required_header(payment_required_header: str) -> str:
         payload = client.create_payment_payload(payment_required)
         return encode_payment_signature_header(payload)
 
-    raise RuntimeError("x402 signer dependencies are unavailable in this runtime")
+    raise RuntimeError(
+        "x402 signer dependencies are unavailable in this runtime "
+        f"(X402ClientSync={X402ClientSync is not None}, "
+        f"X402ExactEvmClientScheme={X402ExactEvmClientScheme is not None}, "
+        f"encode_payment_signature_header={encode_payment_signature_header is not None}, "
+        f"errors={X402_IMPORT_ERRORS[:3]})"
+    )
 
 
 def _x402_auto_pay_request(
@@ -697,6 +712,11 @@ def health():
             "model_hub_configured": bool(os.getenv("OG_HUB_EMAIL") and os.getenv("OG_HUB_PASSWORD")),
             "x402_endpoint": X402_ENDPOINT,
             "x402_fallback_endpoints": X402_FALLBACK_ENDPOINTS,
+            "x402_client_sync_available": X402ClientSync is not None,
+            "x402_exact_evm_scheme_available": X402ExactEvmClientScheme is not None,
+            "x402_header_encoder_available": encode_payment_signature_header is not None,
+            "x402_decode_required_available": decode_payment_required_header is not None,
+            "x402_import_errors": X402_IMPORT_ERRORS[:3],
         }
     )
 
