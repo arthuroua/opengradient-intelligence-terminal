@@ -1,0 +1,601 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenGradient Neon AI Terminal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #040812;
+        --bg-2: #071222;
+        --panel: rgba(6, 17, 34, 0.88);
+        --line: rgba(18, 236, 255, 0.58);
+        --line-soft: rgba(18, 236, 255, 0.22);
+        --text: #cbf7ff;
+        --muted: #84d7e3;
+        --accent: #10ecff;
+        --danger: #ff5d92;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "Share Tech Mono", monospace;
+        background:
+          radial-gradient(circle at 12% 14%, rgba(16, 236, 255, 0.2), transparent 26%),
+          radial-gradient(circle at 86% 80%, rgba(46, 255, 168, 0.13), transparent 22%),
+          linear-gradient(165deg, var(--bg), var(--bg-2) 62%, #030711);
+      }
+      .scanlines::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(to bottom, transparent, transparent 2px, rgba(0, 240, 255, 0.03) 3px, rgba(0, 240, 255, 0.03) 4px);
+        pointer-events: none;
+        z-index: 3;
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 42px 18px 40px;
+        position: relative;
+        z-index: 5;
+      }
+      h1 {
+        margin: 0 0 28px;
+        text-align: center;
+        font-family: "Orbitron", sans-serif;
+        font-size: clamp(30px, 5vw, 54px);
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--accent);
+        text-shadow: 0 0 10px rgba(16, 236, 255, 0.8), 0 0 28px rgba(16, 236, 255, 0.45);
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        box-shadow: 0 0 22px rgba(16, 236, 255, 0.15), inset 0 0 20px rgba(16, 236, 255, 0.05);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 18px;
+      }
+      .panel-title {
+        color: var(--accent);
+        font-family: "Orbitron", sans-serif;
+        font-size: 15px;
+        margin-bottom: 12px;
+        letter-spacing: 0.08em;
+      }
+      .meta { color: var(--muted); margin-bottom: 8px; font-size: 14px; }
+      .buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      input, select, textarea, .output {
+        width: 100%;
+        background: rgba(3, 11, 23, 0.9);
+        border: 1px solid var(--line-soft);
+        color: var(--text);
+        border-radius: 10px;
+        padding: 12px;
+        font: inherit;
+      }
+      textarea { min-height: 130px; resize: vertical; margin-bottom: 12px; }
+      input[type="file"] { padding: 9px; }
+      button {
+        border: 1px solid var(--accent);
+        background: linear-gradient(180deg, rgba(16, 236, 255, 0.24), rgba(16, 236, 255, 0.1));
+        color: var(--text);
+        border-radius: 8px;
+        padding: 10px 13px;
+        font: inherit;
+        cursor: pointer;
+        text-shadow: 0 0 8px rgba(16, 236, 255, 0.5);
+      }
+      button:hover { box-shadow: 0 0 16px rgba(16, 236, 255, 0.35); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .output { min-height: 120px; white-space: pre-wrap; }
+      .status { margin: 10px 0 14px; color: var(--muted); }
+      .danger { color: var(--danger); }
+      @media (max-width: 640px) {
+        h1 { font-size: 28px; }
+        .wrap { padding-top: 28px; }
+      }
+    </style>
+  </head>
+  <body class="scanlines">
+    <div class="wrap">
+      <h1>OpenGradient Neon AI Terminal</h1>
+
+      <section class="panel">
+        <div class="panel-title">Wallet Console</div>
+        <div class="meta" id="walletState">Wallet: not connected</div>
+        <div class="meta" id="balanceState">Balance: -</div>
+        <div class="meta" id="networkState">Network: -</div>
+        <div class="buttons">
+          <button id="connectBtn">Connect Wallet</button>
+          <button id="disconnectBtn">Disconnect</button>
+          <button id="refreshBtn">Refresh Balance</button>
+          <button id="approveBtn">Approve OPG</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">Faucet</div>
+        <div class="buttons">
+          <button id="ethFaucetBtn">Get ETH</button>
+          <button id="opgFaucetBtn">Get OPG</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">AI Playground (SDK/Fallback)</div>
+        <textarea id="prompt">Explain zero knowledge proofs simply</textarea>
+        <button id="runBtn">Run Model</button>
+        <div class="status" id="runStatus">Status: idle</div>
+        <div class="output" id="output">Model output...</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">Raw x402 Gateway</div>
+        <div class="meta" id="x402State">x402: checking config...</div>
+        <div class="grid">
+          <input id="x402Model" placeholder="model id" />
+          <select id="x402Settlement">
+            <option value="private">private</option>
+            <option value="individual">individual</option>
+            <option value="batch">batch</option>
+          </select>
+          <input id="x402MaxTokens" placeholder="max tokens" value="256" />
+        </div>
+        <textarea id="x402Prompt">Hello from raw x402 flow</textarea>
+        <textarea id="x402Payment" placeholder="Paste signed X-PAYMENT value here"></textarea>
+        <div class="buttons">
+          <button id="x402PrepareBtn">Prepare (expect 402)</button>
+          <button id="x402SubmitBtn">Submit X-PAYMENT</button>
+        </div>
+        <div class="status" id="x402Status">Status: idle</div>
+        <div class="output" id="x402Output">x402 output...</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">Model Hub</div>
+        <div class="meta" id="hubState">Model Hub: checking config...</div>
+        <div class="grid">
+          <input id="modelName" placeholder="model repo name (e.g. my_model)" />
+          <input id="modelDesc" placeholder="model description" />
+          <input id="versionNotes" placeholder="version notes" />
+          <input id="versionId" placeholder="version (e.g. 1.00)" />
+        </div>
+        <div class="grid"><input id="modelFile" type="file" /></div>
+        <div class="buttons">
+          <button id="createModelBtn">Create Model Repo</button>
+          <button id="createVersionBtn">Create Version</button>
+          <button id="listFilesBtn">List Files</button>
+          <button id="uploadFileBtn">Upload File</button>
+        </div>
+        <div class="status" id="hubStatus">Status: idle</div>
+        <div class="output" id="hubOutput">Model Hub output...</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">Alpha ML & Workflows</div>
+        <div class="meta" id="alphaState">Alpha: checking config...</div>
+        <div class="grid">
+          <input id="alphaModelCid" placeholder="model CID (Qm...)" value="QmbUqS93oc4JTLMHwpVxsE39mhNxy6hpf6Py3r9oANr8aZ" />
+          <select id="alphaMode">
+            <option value="VANILLA">VANILLA</option>
+            <option value="TEE">TEE</option>
+            <option value="ZKML">ZKML</option>
+          </select>
+          <input id="alphaMaxRetries" placeholder="max retries (optional)" />
+          <input id="workflowContract" placeholder="workflow contract address 0x..." />
+        </div>
+        <textarea id="alphaInputJson">{"num_input1":[1.0,2.0,3.0],"num_input2":10,"str_input1":["hello","ONNX"],"str_input2":" world"}</textarea>
+        <textarea id="workflowDeployJson">{"input_tensor_name":"open_high_low_close","input_query":{"base":"ETH","quote":"USD","total_candles":10,"candle_duration_in_mins":30,"order":"ASCENDING","candle_types":["OPEN","HIGH","LOW","CLOSE"]},"scheduler":{"frequency":3600,"duration_hours":24}}</textarea>
+        <div class="buttons">
+          <button id="alphaInferBtn">Run Alpha Infer</button>
+          <button id="alphaDeployWorkflowBtn">Deploy Workflow</button>
+          <button id="alphaRunWorkflowBtn">Run Workflow</button>
+          <button id="alphaReadWorkflowBtn">Read Workflow Result</button>
+        </div>
+        <div class="status" id="alphaStatus">Status: idle</div>
+        <div class="output" id="alphaOutput">Alpha output...</div>
+      </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+    <script>
+      const walletStateEl = document.getElementById("walletState");
+      const balanceStateEl = document.getElementById("balanceState");
+      const networkStateEl = document.getElementById("networkState");
+      const runStatusEl = document.getElementById("runStatus");
+      const outputEl = document.getElementById("output");
+      const promptEl = document.getElementById("prompt");
+
+      const x402StateEl = document.getElementById("x402State");
+      const x402StatusEl = document.getElementById("x402Status");
+      const x402OutputEl = document.getElementById("x402Output");
+      const x402ModelEl = document.getElementById("x402Model");
+      const x402SettlementEl = document.getElementById("x402Settlement");
+      const x402MaxTokensEl = document.getElementById("x402MaxTokens");
+      const x402PromptEl = document.getElementById("x402Prompt");
+      const x402PaymentEl = document.getElementById("x402Payment");
+
+      const hubStateEl = document.getElementById("hubState");
+      const hubStatusEl = document.getElementById("hubStatus");
+      const hubOutputEl = document.getElementById("hubOutput");
+      const modelNameEl = document.getElementById("modelName");
+      const modelDescEl = document.getElementById("modelDesc");
+      const versionNotesEl = document.getElementById("versionNotes");
+      const versionIdEl = document.getElementById("versionId");
+      const modelFileEl = document.getElementById("modelFile");
+
+      const alphaStateEl = document.getElementById("alphaState");
+      const alphaStatusEl = document.getElementById("alphaStatus");
+      const alphaOutputEl = document.getElementById("alphaOutput");
+      const alphaModelCidEl = document.getElementById("alphaModelCid");
+      const alphaModeEl = document.getElementById("alphaMode");
+      const alphaInputJsonEl = document.getElementById("alphaInputJson");
+      const alphaMaxRetriesEl = document.getElementById("alphaMaxRetries");
+      const workflowContractEl = document.getElementById("workflowContract");
+      const workflowDeployJsonEl = document.getElementById("workflowDeployJson");
+
+      const connectBtn = document.getElementById("connectBtn");
+      const disconnectBtn = document.getElementById("disconnectBtn");
+      const refreshBtn = document.getElementById("refreshBtn");
+      const approveBtn = document.getElementById("approveBtn");
+      const runBtn = document.getElementById("runBtn");
+      const ethFaucetBtn = document.getElementById("ethFaucetBtn");
+      const opgFaucetBtn = document.getElementById("opgFaucetBtn");
+
+      const x402PrepareBtn = document.getElementById("x402PrepareBtn");
+      const x402SubmitBtn = document.getElementById("x402SubmitBtn");
+
+      const createModelBtn = document.getElementById("createModelBtn");
+      const createVersionBtn = document.getElementById("createVersionBtn");
+      const listFilesBtn = document.getElementById("listFilesBtn");
+      const uploadFileBtn = document.getElementById("uploadFileBtn");
+
+      const alphaInferBtn = document.getElementById("alphaInferBtn");
+      const alphaDeployWorkflowBtn = document.getElementById("alphaDeployWorkflowBtn");
+      const alphaRunWorkflowBtn = document.getElementById("alphaRunWorkflowBtn");
+      const alphaReadWorkflowBtn = document.getElementById("alphaReadWorkflowBtn");
+
+      let cfg = null;
+      let provider = null;
+      let signer = null;
+      let account = null;
+
+      const ERC20_ABI = [
+        "function approve(address spender, uint256 amount) external returns (bool)",
+        "function decimals() view returns (uint8)",
+        "function balanceOf(address owner) view returns (uint256)"
+      ];
+
+      function shortAddr(addr) { return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "-"; }
+      function pretty(data) { try { return JSON.stringify(data, null, 2); } catch { return String(data); } }
+      function parseJson(text, label) {
+        try { return JSON.parse(text); }
+        catch (e) { throw new Error(`${label} JSON invalid: ${e.message}`); }
+      }
+
+      async function loadConfig() {
+        const r = await fetch("/api/config");
+        cfg = await r.json();
+        networkStateEl.textContent = `Network: ${cfg.chainName} (chainId ${cfg.chainId})`;
+        hubStateEl.textContent = cfg.modelHubConfigured ? "Model Hub: credentials configured" : "Model Hub: set OG_HUB_EMAIL and OG_HUB_PASSWORD";
+        alphaStateEl.textContent = cfg.alphaConfigured ? "Alpha: private key configured" : "Alpha: set OG_ALPHA_PRIVATE_KEY (or OG_PRIVATE_KEY)";
+        x402StateEl.textContent = `x402 endpoint: ${cfg.x402Endpoint}`;
+        if (!x402ModelEl.value) x402ModelEl.value = cfg.x402DefaultModel || "google/gemini-2.5-flash";
+        if (cfg.x402DefaultSettlement) x402SettlementEl.value = cfg.x402DefaultSettlement;
+      }
+
+      async function ensureCorrectNetwork() {
+        if (!window.ethereum) throw new Error("MetaMask not found");
+        const chainHex = `0x${Number(cfg.chainId).toString(16)}`;
+        try {
+          await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainHex }] });
+        } catch (err) {
+          if (err.code === 4902) {
+            await window.ethereum.request({
+              method: "wallet_addEthereumChain",
+              params: [{ chainId: chainHex, chainName: cfg.chainName, rpcUrls: [cfg.rpcUrl], nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 } }]
+            });
+          } else { throw err; }
+        }
+      }
+
+      async function connectWallet() {
+        if (!window.ethereum) {
+          walletStateEl.innerHTML = '<span class="danger">Wallet: MetaMask not installed</span>';
+          return;
+        }
+        await ensureCorrectNetwork();
+        provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        signer = await provider.getSigner();
+        account = await signer.getAddress();
+        walletStateEl.textContent = `Wallet: ${shortAddr(account)}`;
+        await refreshBalance();
+      }
+
+      function disconnectWallet() {
+        provider = null; signer = null; account = null;
+        walletStateEl.textContent = "Wallet: not connected";
+        balanceStateEl.textContent = "Balance: -";
+      }
+
+      async function refreshBalance() {
+        if (!provider || !account) { balanceStateEl.textContent = "Balance: connect wallet first"; return; }
+        const wei = await provider.getBalance(account);
+        const eth = Number(ethers.formatEther(wei)).toFixed(5);
+        if (cfg.opgTokenAddress) {
+          const token = new ethers.Contract(cfg.opgTokenAddress, ERC20_ABI, provider);
+          const [decimals, raw] = await Promise.all([token.decimals(), token.balanceOf(account)]);
+          const opg = Number(ethers.formatUnits(raw, decimals)).toFixed(2);
+          balanceStateEl.textContent = `Balance: ${eth} ETH | ${opg} OPG`;
+        } else {
+          balanceStateEl.textContent = `Balance: ${eth} ETH`;
+        }
+      }
+
+      async function approveOpg() {
+        if (!signer || !account) { runStatusEl.innerHTML = '<span class="danger">Status: connect wallet first</span>'; return; }
+        if (!cfg.opgTokenAddress || !cfg.ogSpenderAddress) {
+          runStatusEl.innerHTML = '<span class="danger">Status: set OPG_TOKEN_ADDRESS and OG_SPENDER_ADDRESS in Railway variables</span>';
+          return;
+        }
+        runStatusEl.textContent = "Status: sending approve transaction...";
+        try {
+          const token = new ethers.Contract(cfg.opgTokenAddress, ERC20_ABI, signer);
+          const amount = ethers.parseUnits("1000", 18);
+          const tx = await token.approve(cfg.ogSpenderAddress, amount);
+          runStatusEl.textContent = `Status: approve pending ${tx.hash}`;
+          await tx.wait();
+          runStatusEl.textContent = `Status: approve confirmed ${tx.hash}`;
+          await refreshBalance();
+        } catch (error) {
+          runStatusEl.innerHTML = `<span class="danger">Status: approve failed: ${error.message}</span>`;
+        }
+      }
+
+      async function runModel() {
+        const prompt = promptEl.value.trim();
+        if (!prompt) { runStatusEl.textContent = "Status: prompt is empty"; return; }
+        runBtn.disabled = true;
+        runStatusEl.textContent = "Status: running model...";
+        outputEl.textContent = "Waiting for model response...";
+        try {
+          const r = await fetch("/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
+          const data = await r.json();
+          if (!r.ok) {
+            outputEl.textContent = data.details || data.error || "Unknown error";
+            runStatusEl.innerHTML = '<span class="danger">Status: failed</span>';
+            return;
+          }
+          outputEl.textContent = data.response;
+          runStatusEl.textContent = `Status: success via ${data.provider}`;
+        } catch (error) {
+          outputEl.textContent = error.message;
+          runStatusEl.innerHTML = '<span class="danger">Status: network error</span>';
+        } finally {
+          runBtn.disabled = false;
+        }
+      }
+
+      async function x402Prepare() {
+        const model = x402ModelEl.value.trim();
+        const settlement = x402SettlementEl.value;
+        const max_tokens = Number(x402MaxTokensEl.value || "256");
+        const prompt = x402PromptEl.value.trim();
+        if (!prompt) { x402StatusEl.textContent = "Status: prompt is empty"; return; }
+        x402StatusEl.textContent = "Status: sending prepare...";
+        const body = {
+          model,
+          settlement,
+          max_tokens,
+          messages: [
+            { role: "system", content: "You are a helpful AI assistant." },
+            { role: "user", content: prompt }
+          ]
+        };
+        const r = await fetch("/api/x402/prepare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await r.json();
+        x402OutputEl.textContent = pretty(data);
+        if (r.ok && data.status_code === 402) {
+          x402StatusEl.textContent = "Status: got 402, now sign and paste X-PAYMENT";
+        } else if (r.ok && data.status_code === 200) {
+          x402StatusEl.textContent = "Status: request already succeeded (no payment step)";
+        } else {
+          x402StatusEl.innerHTML = '<span class="danger">Status: prepare failed</span>';
+        }
+      }
+
+      async function x402Submit() {
+        const model = x402ModelEl.value.trim();
+        const settlement = x402SettlementEl.value;
+        const max_tokens = Number(x402MaxTokensEl.value || "256");
+        const prompt = x402PromptEl.value.trim();
+        const x_payment = x402PaymentEl.value.trim();
+        if (!x_payment) { x402StatusEl.textContent = "Status: paste X-PAYMENT first"; return; }
+        x402StatusEl.textContent = "Status: submitting X-PAYMENT...";
+        const body = {
+          model,
+          settlement,
+          max_tokens,
+          x_payment,
+          messages: [
+            { role: "system", content: "You are a helpful AI assistant." },
+            { role: "user", content: prompt }
+          ]
+        };
+        const r = await fetch("/api/x402/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await r.json();
+        x402OutputEl.textContent = pretty(data);
+        x402StatusEl.innerHTML = r.ok ? "Status: x402 submit success" : '<span class="danger">Status: submit failed</span>';
+      }
+
+      function openLink(url) {
+        if (!url) { runStatusEl.innerHTML = '<span class="danger">Status: faucet URL not set in Railway variables</span>'; return; }
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+
+      async function createModelRepo() {
+        const model_name = modelNameEl.value.trim();
+        const model_desc = modelDescEl.value.trim() || "Created from Neon AI Terminal";
+        if (!model_name) { hubStatusEl.innerHTML = '<span class="danger">Status: model name is required</span>'; return; }
+        hubStatusEl.textContent = "Status: creating model repo...";
+        const r = await fetch("/api/modelhub/create-model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model_name, model_desc }) });
+        const data = await r.json();
+        hubOutputEl.textContent = pretty(data);
+        hubStatusEl.innerHTML = r.ok ? "Status: model repo created" : '<span class="danger">Status: create model failed</span>';
+      }
+
+      async function createVersion() {
+        const model_name = modelNameEl.value.trim();
+        const notes = versionNotesEl.value.trim() || "Created from web terminal";
+        if (!model_name) { hubStatusEl.innerHTML = '<span class="danger">Status: model name is required</span>'; return; }
+        hubStatusEl.textContent = "Status: creating version...";
+        const r = await fetch("/api/modelhub/create-version", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model_name, notes }) });
+        const data = await r.json();
+        hubOutputEl.textContent = pretty(data);
+        if (r.ok && data.version && !versionIdEl.value.trim()) versionIdEl.value = String(data.version);
+        hubStatusEl.innerHTML = r.ok ? "Status: version created" : '<span class="danger">Status: create version failed</span>';
+      }
+
+      async function listFiles() {
+        const model_name = modelNameEl.value.trim();
+        const version = versionIdEl.value.trim();
+        if (!model_name || !version) { hubStatusEl.innerHTML = '<span class="danger">Status: model name and version required</span>'; return; }
+        hubStatusEl.textContent = "Status: loading file list...";
+        const url = `/api/modelhub/list-files?model_name=${encodeURIComponent(model_name)}&version=${encodeURIComponent(version)}`;
+        const r = await fetch(url);
+        const data = await r.json();
+        hubOutputEl.textContent = pretty(data);
+        hubStatusEl.innerHTML = r.ok ? "Status: files loaded" : '<span class="danger">Status: list files failed</span>';
+      }
+
+      async function uploadFile() {
+        const model_name = modelNameEl.value.trim();
+        const version = versionIdEl.value.trim();
+        const file = modelFileEl.files?.[0];
+        if (!model_name || !version || !file) { hubStatusEl.innerHTML = '<span class="danger">Status: model name, version and file required</span>'; return; }
+        hubStatusEl.textContent = "Status: uploading file...";
+        const fd = new FormData();
+        fd.append("model_name", model_name);
+        fd.append("version", version);
+        fd.append("file", file);
+        const r = await fetch("/api/modelhub/upload", { method: "POST", body: fd });
+        const data = await r.json();
+        hubOutputEl.textContent = pretty(data);
+        hubStatusEl.innerHTML = r.ok ? "Status: file uploaded" : '<span class="danger">Status: upload failed</span>';
+      }
+
+      async function alphaInfer() {
+        const model_cid = alphaModelCidEl.value.trim();
+        const mode = alphaModeEl.value;
+        const model_input = parseJson(alphaInputJsonEl.value, "Inference input");
+        const max_retries_raw = alphaMaxRetriesEl.value.trim();
+        const body = { model_cid, mode, model_input };
+        if (max_retries_raw) body.max_retries = Number(max_retries_raw);
+        alphaStatusEl.textContent = "Status: running alpha inference...";
+        const r = await fetch("/api/alpha/infer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const data = await r.json();
+        alphaOutputEl.textContent = pretty(data);
+        alphaStatusEl.innerHTML = r.ok ? "Status: alpha infer complete" : '<span class="danger">Status: alpha infer failed</span>';
+      }
+
+      async function alphaDeployWorkflow() {
+        const model_cid = alphaModelCidEl.value.trim();
+        const payload = parseJson(workflowDeployJsonEl.value, "Workflow deploy");
+        alphaStatusEl.textContent = "Status: deploying workflow...";
+        const r = await fetch("/api/alpha/new-workflow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model_cid, ...payload })
+        });
+        const data = await r.json();
+        alphaOutputEl.textContent = pretty(data);
+        if (r.ok && data.contract_address) workflowContractEl.value = data.contract_address;
+        alphaStatusEl.innerHTML = r.ok ? "Status: workflow deployed" : '<span class="danger">Status: deploy failed</span>';
+      }
+
+      async function alphaRunWorkflow() {
+        const contract_address = workflowContractEl.value.trim();
+        alphaStatusEl.textContent = "Status: running workflow...";
+        const r = await fetch("/api/alpha/run-workflow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contract_address })
+        });
+        const data = await r.json();
+        alphaOutputEl.textContent = pretty(data);
+        alphaStatusEl.innerHTML = r.ok ? "Status: workflow run sent" : '<span class="danger">Status: run workflow failed</span>';
+      }
+
+      async function alphaReadWorkflow() {
+        const contract_address = workflowContractEl.value.trim();
+        alphaStatusEl.textContent = "Status: reading workflow result...";
+        const r = await fetch("/api/alpha/read-workflow-result", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contract_address })
+        });
+        const data = await r.json();
+        alphaOutputEl.textContent = pretty(data);
+        alphaStatusEl.innerHTML = r.ok ? "Status: workflow result loaded" : '<span class="danger">Status: read result failed</span>';
+      }
+
+      connectBtn.addEventListener("click", async () => {
+        try { await connectWallet(); }
+        catch (error) { walletStateEl.innerHTML = `<span class="danger">Wallet: ${error.message}</span>`; }
+      });
+      disconnectBtn.addEventListener("click", disconnectWallet);
+      refreshBtn.addEventListener("click", refreshBalance);
+      approveBtn.addEventListener("click", approveOpg);
+      runBtn.addEventListener("click", runModel);
+      ethFaucetBtn.addEventListener("click", () => openLink(cfg?.ethFaucetUrl));
+      opgFaucetBtn.addEventListener("click", () => openLink(cfg?.opgFaucetUrl));
+
+      x402PrepareBtn.addEventListener("click", () => x402Prepare().catch((e) => {
+        x402StatusEl.innerHTML = '<span class="danger">Status: prepare failed</span>';
+        x402OutputEl.textContent = e.message;
+      }));
+      x402SubmitBtn.addEventListener("click", () => x402Submit().catch((e) => {
+        x402StatusEl.innerHTML = '<span class="danger">Status: submit failed</span>';
+        x402OutputEl.textContent = e.message;
+      }));
+
+      createModelBtn.addEventListener("click", () => createModelRepo().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: create model failed</span>'; hubOutputEl.textContent = e.message; }));
+      createVersionBtn.addEventListener("click", () => createVersion().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: create version failed</span>'; hubOutputEl.textContent = e.message; }));
+      listFilesBtn.addEventListener("click", () => listFiles().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: list files failed</span>'; hubOutputEl.textContent = e.message; }));
+      uploadFileBtn.addEventListener("click", () => uploadFile().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: upload failed</span>'; hubOutputEl.textContent = e.message; }));
+
+      alphaInferBtn.addEventListener("click", () => alphaInfer().catch((e) => { alphaStatusEl.innerHTML = '<span class="danger">Status: alpha infer failed</span>'; alphaOutputEl.textContent = e.message; }));
+      alphaDeployWorkflowBtn.addEventListener("click", () => alphaDeployWorkflow().catch((e) => { alphaStatusEl.innerHTML = '<span class="danger">Status: deploy failed</span>'; alphaOutputEl.textContent = e.message; }));
+      alphaRunWorkflowBtn.addEventListener("click", () => alphaRunWorkflow().catch((e) => { alphaStatusEl.innerHTML = '<span class="danger">Status: run workflow failed</span>'; alphaOutputEl.textContent = e.message; }));
+      alphaReadWorkflowBtn.addEventListener("click", () => alphaReadWorkflow().catch((e) => { alphaStatusEl.innerHTML = '<span class="danger">Status: read result failed</span>'; alphaOutputEl.textContent = e.message; }));
+
+      loadConfig().catch((error) => {
+        runStatusEl.innerHTML = `<span class="danger">Status: config load failed: ${error.message}</span>`;
+      });
+    </script>
+  </body>
+</html>
