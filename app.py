@@ -88,6 +88,7 @@ X402_DEFAULT_SETTLEMENT = os.getenv("X402_DEFAULT_SETTLEMENT", "private")
 X402_FALLBACK_ENDPOINTS = os.getenv("X402_FALLBACK_ENDPOINTS", "https://13.59.207.188/v1/chat/completions")
 
 _approval_lock = threading.Lock()
+_x402_backend_approval_ready = False
 urllib3.disable_warnings(InsecureRequestWarning)
 
 def _json_error(message: str, status: int = 500, details: Any | None = None):
@@ -581,6 +582,26 @@ def _ensure_approval_once(llm):
         llm.ensure_opg_approval(opg_amount=OG_APPROVAL_OPG_AMOUNT)
 
 
+def _ensure_x402_backend_approval_once():
+    global _x402_backend_approval_ready
+    if _x402_backend_approval_ready:
+        return
+
+    if og is None:
+        return
+
+    private_key = os.getenv("OG_PRIVATE_KEY")
+    if not private_key:
+        return
+
+    with _approval_lock:
+        if _x402_backend_approval_ready:
+            return
+        llm = og.LLM(private_key=private_key)
+        llm.ensure_opg_approval(opg_amount=OG_APPROVAL_OPG_AMOUNT)
+        _x402_backend_approval_ready = True
+
+
 def _get_hub():
     if og is None:
         raise RuntimeError("opengradient package is not installed")
@@ -644,6 +665,7 @@ def call_opengradient_sdk(prompt: str) -> str:
 def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
     # Prefer direct x402 flow first because SDK runtime can be unstable in some deployments.
     try:
+        _ensure_x402_backend_approval_once()
         status_code, headers, body, endpoint_used = _x402_auto_pay_request(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
