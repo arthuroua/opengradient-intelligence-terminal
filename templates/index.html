@@ -416,7 +416,12 @@
         const data = await r.json();
         x402OutputEl.textContent = pretty(data);
         if (r.ok && data.status_code === 402) {
-          x402StatusEl.textContent = "Status: got 402, now sign and paste X-PAYMENT";
+          if (data.auto_payment_signature) {
+            x402PaymentEl.value = data.auto_payment_signature;
+            x402StatusEl.textContent = "Status: got 402 and auto-signed payment; now click Submit X-PAYMENT";
+          } else {
+            x402StatusEl.textContent = "Status: got 402, now sign and paste X-PAYMENT";
+          }
         } else if (r.ok && data.status_code === 200) {
           x402StatusEl.textContent = "Status: request already succeeded (no payment step)";
         } else {

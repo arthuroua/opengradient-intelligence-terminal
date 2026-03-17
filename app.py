@@ -161,6 +161,41 @@ def _x402_prepare_request(
     return response.status_code, _extract_x402_headers(response.headers), body, endpoint_used
 
 
+def _pick_payment_requirement(payment_required):
+    accepts = payment_required.accepts or []
+    if not accepts:
+        raise RuntimeError("No payment requirements returned by x402 gateway")
+
+    preferred_network = os.getenv("X402_PREFERRED_NETWORK", "eip155:84532").strip()
+    preferred_asset = (DEFAULT_OPG_TOKEN or "").strip().lower()
+
+    for req in accepts:
+        if req.network == preferred_network and (not preferred_asset or req.asset.lower() == preferred_asset):
+            return req
+    for req in accepts:
+        if req.network == preferred_network:
+            return req
+    for req in accepts:
+        if preferred_asset and req.asset.lower() == preferred_asset:
+            return req
+    return accepts[0]
+
+
+def _sign_payment_required_header(payment_required_header: str) -> str:
+    private_key = os.getenv("OG_PRIVATE_KEY")
+    if not private_key:
+        raise RuntimeError("OG_PRIVATE_KEY is required for x402 payment signing")
+
+    payment_required = decode_payment_required_header(payment_required_header)
+    selected = _pick_payment_requirement(payment_required)
+    account = EthAccount.from_key(private_key)
+    x402_client = X402Client(account=account)
+    return x402_client.create_payment_header(
+        selected,
+        x402_version=payment_required.x402_version,
+    )
+
+
 def _x402_auto_pay_request(
     messages: list[dict[str, str]],
     model: str | None = None,
@@ -180,18 +215,8 @@ def _x402_auto_pay_request(
     if not payment_required_header:
         raise RuntimeError("x402 returned 402 but missing PAYMENT-REQUIRED header")
 
-    private_key = os.getenv("OG_PRIVATE_KEY")
-    if not private_key:
-        raise RuntimeError("OG_PRIVATE_KEY is required for automatic x402 payment signing")
-
     payment_required = decode_payment_required_header(payment_required_header)
-    account = EthAccount.from_key(private_key)
-    x402_client = X402Client(account=account)
-    selected = x402_client.select_payment_requirements(payment_required.accepts)
-    signed = x402_client.create_payment_header(
-        selected,
-        x402_version=payment_required.x402_version,
-    )
+    signed = _sign_payment_required_header(payment_required_header)
 
     headers_retry = {
         "Content-Type": "application/json",
@@ -573,6 +598,16 @@ def x402_prepare():
         except Exception:
             body = response.text
 
+        auto_payment_signature = None
+        auto_sign_error = None
+        if response.status_code == 402:
+            payment_required_header = _extract_x402_headers(response.headers).get(PAYMENT_REQUIRED_HEADER)
+            if payment_required_header and os.getenv("OG_PRIVATE_KEY"):
+                try:
+                    auto_payment_signature = _sign_payment_required_header(payment_required_header)
+                except Exception as exc:
+                    auto_sign_error = str(exc)
+
         return jsonify(
             {
                 "ok": response.status_code in (200, 402),
@@ -580,6 +615,8 @@ def x402_prepare():
                 "endpoint_used": endpoint_used,
                 "headers": _extract_x402_headers(response.headers),
                 "body": body,
+                "auto_payment_signature": auto_payment_signature,
+                "auto_sign_error": auto_sign_error,
                 "hint": "If status_code is 402, sign payment payload client-side and call /api/x402/submit with x_payment",
             }
         ), (200 if response.status_code in (200, 402) else 502)
@@ -610,6 +647,8 @@ def x402_submit():
         headers["PAYMENT-SIGNATURE"] = payment_signature
     if x_payment:
         headers["X-PAYMENT"] = x_payment
+        if not payment_signature:
+            headers["PAYMENT-SIGNATURE"] = x_payment
 
     api_key = os.getenv("OG_API_KEY")
     if api_key:
