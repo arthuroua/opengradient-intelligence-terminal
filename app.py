@@ -9,6 +9,14 @@ import requests
 import urllib3
 from flask import Flask, jsonify, render_template, request
 from urllib3.exceptions import InsecureRequestWarning
+from eth_account import Account as EthAccount
+from x402.clients.base import x402Client as X402Client
+from x402.http import (
+    PAYMENT_REQUIRED_HEADER,
+    PAYMENT_SIGNATURE_HEADER,
+    X_PAYMENT_HEADER,
+    decode_payment_required_header,
+)
 try:
     import opengradient as og
 except Exception:
@@ -153,6 +161,71 @@ def _x402_prepare_request(
     return response.status_code, _extract_x402_headers(response.headers), body, endpoint_used
 
 
+def _x402_auto_pay_request(
+    messages: list[dict[str, str]],
+    model: str | None = None,
+    max_tokens: int = 300,
+    settlement: str | None = None,
+) -> tuple[int, dict[str, str], Any, str]:
+    status_code, headers, body, endpoint_used = _x402_prepare_request(
+        messages=messages,
+        model=model,
+        max_tokens=max_tokens,
+        settlement=settlement,
+    )
+    if status_code != 402:
+        return status_code, headers, body, endpoint_used
+
+    payment_required_header = headers.get(PAYMENT_REQUIRED_HEADER)
+    if not payment_required_header:
+        raise RuntimeError("x402 returned 402 but missing PAYMENT-REQUIRED header")
+
+    private_key = os.getenv("OG_PRIVATE_KEY")
+    if not private_key:
+        raise RuntimeError("OG_PRIVATE_KEY is required for automatic x402 payment signing")
+
+    payment_required = decode_payment_required_header(payment_required_header)
+    account = EthAccount.from_key(private_key)
+    x402_client = X402Client(account=account)
+    selected = x402_client.select_payment_requirements(payment_required.accepts)
+    signed = x402_client.create_payment_header(
+        selected,
+        x402_version=payment_required.x402_version,
+    )
+
+    headers_retry = {
+        "Content-Type": "application/json",
+        "X-SETTLEMENT-TYPE": (settlement or X402_DEFAULT_SETTLEMENT).strip().lower(),
+    }
+    if payment_required.x402_version == 2:
+        headers_retry[PAYMENT_SIGNATURE_HEADER] = signed
+    else:
+        headers_retry[X_PAYMENT_HEADER] = signed
+
+    api_key = os.getenv("OG_API_KEY")
+    if api_key:
+        headers_retry["Authorization"] = f"Bearer {api_key}"
+
+    response, endpoint_retry = _post_x402_with_fallback(
+        headers=headers_retry,
+        payload={
+            "model": (model or X402_DEFAULT_MODEL).strip(),
+            "messages": messages,
+            "max_tokens": max_tokens,
+        },
+    )
+    try:
+        body_retry: Any = response.json()
+    except Exception:
+        body_retry = response.text
+    return (
+        response.status_code,
+        _extract_x402_headers(response.headers),
+        body_retry,
+        endpoint_retry,
+    )
+
+
 def _resolve_og_model():
     if og is None:
         raise RuntimeError("opengradient package is not available")
@@ -249,7 +322,7 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
         if not _is_402_error(exc):
             raise
 
-        status_code, headers, body, endpoint_used = _x402_prepare_request(
+        status_code, headers, body, endpoint_used = _x402_auto_pay_request(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
@@ -263,16 +336,16 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
             try:
                 content = body["choices"][0]["message"]["content"].strip()
                 if content:
-                    return content, "x402_gateway"
+                    return content, "x402_gateway_auto_paid"
             except Exception:
                 pass
 
         if status_code == 402:
             requirement_preview = str(headers)[:400]
             message = (
-                "SDK returned 402. x402 payment is required. "
+                "SDK returned 402 and automatic x402 payment did not complete. "
                 "Use the Raw x402 Gateway block: click Prepare, sign payment payload, "
-                "paste X-PAYMENT, then click Submit. "
+                "paste X-PAYMENT (or PAYMENT-SIGNATURE), then click Submit. "
                 f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}"
             )
             return message, "x402_prepare_required"
@@ -521,18 +594,22 @@ def x402_submit():
     settlement = (data.get("settlement") or X402_DEFAULT_SETTLEMENT).strip().lower()
     max_tokens = int(data.get("max_tokens") or 256)
     x_payment = (data.get("x_payment") or "").strip()
+    payment_signature = (data.get("payment_signature") or "").strip()
     messages = data.get("messages")
 
-    if not x_payment:
-        return _json_error("x_payment is required", 400)
+    if not x_payment and not payment_signature:
+        return _json_error("x_payment or payment_signature is required", 400)
     if not isinstance(messages, list) or not messages:
         return _json_error("messages must be a non-empty array", 400)
 
     headers = {
         "Content-Type": "application/json",
         "X-SETTLEMENT-TYPE": settlement,
-        "X-PAYMENT": x_payment,
     }
+    if payment_signature:
+        headers["PAYMENT-SIGNATURE"] = payment_signature
+    if x_payment:
+        headers["X-PAYMENT"] = x_payment
 
     api_key = os.getenv("OG_API_KEY")
     if api_key:
