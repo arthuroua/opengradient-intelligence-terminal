@@ -86,6 +86,7 @@ X402_ENDPOINT = os.getenv("X402_ENDPOINT", "https://llm.opengradient.ai/v1/chat/
 X402_DEFAULT_MODEL = os.getenv("X402_DEFAULT_MODEL", "google/gemini-2.5-flash")
 X402_DEFAULT_SETTLEMENT = os.getenv("X402_DEFAULT_SETTLEMENT", "private")
 X402_FALLBACK_ENDPOINTS = os.getenv("X402_FALLBACK_ENDPOINTS", "https://13.59.207.188/v1/chat/completions")
+ENABLE_WIKI_FALLBACK = os.getenv("ENABLE_WIKI_FALLBACK", "true").strip().lower() in ("1", "true", "yes", "on")
 
 _approval_lock = threading.Lock()
 _x402_backend_approval_ready = False
@@ -704,6 +705,12 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
         try:
             return call_opengradient_sdk(prompt), "opengradient_sdk"
         except Exception as sdk_exc:
+            if manual_x402_message and ENABLE_WIKI_FALLBACK:
+                try:
+                    return call_wikipedia_fallback(prompt), "wikipedia_fallback"
+                except Exception:
+                    pass
+
             if manual_x402_message:
                 return manual_x402_message, "x402_prepare_required"
 
@@ -826,6 +833,42 @@ def call_opengradient_http(prompt: str) -> str:
     return data["choices"][0]["message"]["content"].strip()
 
 
+def call_wikipedia_fallback(prompt: str) -> str:
+    headers = {
+        "User-Agent": "OpenGradientTerminal/1.0 (+https://opengradient-playground-production.up.railway.app)",
+    }
+    search_resp = requests.get(
+        "https://en.wikipedia.org/w/api.php",
+        params={
+            "action": "opensearch",
+            "search": prompt,
+            "limit": 1,
+            "namespace": 0,
+            "format": "json",
+        },
+        headers=headers,
+        timeout=REQUEST_TIMEOUT,
+    )
+    search_resp.raise_for_status()
+    search_data = search_resp.json()
+    titles = search_data[1] if isinstance(search_data, list) and len(search_data) > 1 else []
+    if not titles:
+        raise RuntimeError("No Wikipedia match found for the prompt")
+
+    title = str(titles[0]).strip()
+    summary_resp = requests.get(
+        f"https://en.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(title)}",
+        headers=headers,
+        timeout=REQUEST_TIMEOUT,
+    )
+    summary_resp.raise_for_status()
+    summary_data = summary_resp.json()
+    extract = (summary_data.get("extract") or "").strip()
+    if not extract:
+        raise RuntimeError("Wikipedia returned empty summary")
+    return extract
+
+
 def generate_reply(prompt: str) -> tuple[str, str]:
     provider = DEFAULT_PROVIDER
     errors: list[str] = []
@@ -874,6 +917,7 @@ def health():
             "x402_header_encoder_available": encode_payment_signature_header is not None,
             "x402_decode_required_available": decode_payment_required_header is not None,
             "x402_import_errors": X402_IMPORT_ERRORS[:3],
+            "wiki_fallback_enabled": ENABLE_WIKI_FALLBACK,
         }
     )
 
