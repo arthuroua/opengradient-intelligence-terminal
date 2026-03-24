@@ -627,6 +627,27 @@ def _get_alpha():
     return og.Alpha(private_key=private_key)
 
 
+def _build_alpha_error_details(exc: Exception, mode: str, model_cid: str) -> Any:
+    message = str(exc)
+    details: dict[str, Any] = {
+        "message": message,
+        "mode": mode,
+        "model_cid": model_cid,
+    }
+    if "InferenceResult event not found" in message:
+        details["hint"] = (
+            "Alpha transaction finished but the expected InferenceResult event was not emitted. "
+            "This is usually alpha-network/account/mode mismatch rather than a frontend bug."
+        )
+        details["checklist"] = [
+            "Set OG_ALPHA_PRIVATE_KEY in Railway (preferred) instead of relying only on OG_PRIVATE_KEY.",
+            "Use an account that was initialized/funded on OpenGradient alpha testnet.",
+            "Try mode TEE if VANILLA keeps failing for this model CID.",
+            "Set max_retries to 3 and run again.",
+        ]
+    return details
+
+
 async def call_opengradient_sdk_async(prompt: str) -> str:
     if og is None:
         raise RuntimeError("opengradient package is not installed")
@@ -908,6 +929,8 @@ def health():
             "has_gemini": bool(os.getenv("GEMINI_API_KEY")),
             "has_og": bool(os.getenv("OG_API_KEY")),
             "has_og_private_key": bool(os.getenv("OG_PRIVATE_KEY")),
+            "has_og_alpha_private_key": bool(os.getenv("OG_ALPHA_PRIVATE_KEY")),
+            "alpha_key_source": "OG_ALPHA_PRIVATE_KEY" if os.getenv("OG_ALPHA_PRIVATE_KEY") else ("OG_PRIVATE_KEY" if os.getenv("OG_PRIVATE_KEY") else "none"),
             "has_alpha_private_key": bool(os.getenv("OG_ALPHA_PRIVATE_KEY") or os.getenv("OG_PRIVATE_KEY")),
             "og_sdk_available": og is not None,
             "og_sdk_model": OG_SDK_MODEL,
@@ -1221,7 +1244,7 @@ def alpha_infer():
             }
         )
     except Exception as exc:
-        return _json_error("Alpha inference failed", 500, str(exc))
+        return _json_error("Alpha inference failed", 500, _build_alpha_error_details(exc, mode, model_cid))
 
 
 @app.post("/api/alpha/new-workflow")
