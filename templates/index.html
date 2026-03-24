@@ -104,11 +104,14 @@
       button:disabled { opacity: 0.55; cursor: not-allowed; }
       .output {
         min-height: 120px;
+        max-height: 340px;
+        overflow: auto;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         word-break: break-word;
       }
       textarea {
+        white-space: pre-wrap;
         overflow-wrap: anywhere;
         word-break: break-word;
       }
@@ -292,6 +295,33 @@
 
       function shortAddr(addr) { return addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "-"; }
       function pretty(data) { try { return JSON.stringify(data, null, 2); } catch { return String(data); } }
+      function shortToken(value, head = 64, tail = 24) {
+        if (typeof value !== "string") return value;
+        if (value.length <= head + tail + 3) return value;
+        return `${value.slice(0, head)}...${value.slice(-tail)} [len=${value.length}]`;
+      }
+      function prettyX402(data) {
+        try {
+          if (!data || typeof data !== "object") return pretty(data);
+          const clone = JSON.parse(JSON.stringify(data));
+
+          if (typeof clone.auto_payment_signature === "string") {
+            clone.auto_payment_signature = shortToken(clone.auto_payment_signature);
+          }
+          if (clone.headers && typeof clone.headers === "object") {
+            if (typeof clone.headers["Payment-Required"] === "string") {
+              clone.headers["Payment-Required"] = shortToken(clone.headers["Payment-Required"]);
+            }
+            if (typeof clone.headers["PAYMENT-REQUIRED"] === "string") {
+              clone.headers["PAYMENT-REQUIRED"] = shortToken(clone.headers["PAYMENT-REQUIRED"]);
+            }
+          }
+
+          return JSON.stringify(clone, null, 2);
+        } catch {
+          return pretty(data);
+        }
+      }
       function parseJson(text, label) {
         try { return JSON.parse(text); }
         catch (e) { throw new Error(`${label} JSON invalid: ${e.message}`); }
@@ -423,7 +453,7 @@
           body: JSON.stringify(body)
         });
         const data = await r.json();
-        x402OutputEl.textContent = pretty(data);
+        x402OutputEl.textContent = prettyX402(data);
         if (r.ok && data.status_code === 402) {
           if (data.auto_payment_signature) {
             x402PaymentEl.value = data.auto_payment_signature;
@@ -462,7 +492,7 @@
           body: JSON.stringify(body)
         });
         const data = await r.json();
-        x402OutputEl.textContent = pretty(data);
+        x402OutputEl.textContent = prettyX402(data);
         x402StatusEl.innerHTML = r.ok ? "Status: x402 submit success" : '<span class="danger">Status: submit failed</span>';
       }
 
