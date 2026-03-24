@@ -102,7 +102,16 @@
       }
       button:hover { box-shadow: 0 0 16px rgba(16, 236, 255, 0.35); }
       button:disabled { opacity: 0.55; cursor: not-allowed; }
-      .output { min-height: 120px; white-space: pre-wrap; }
+      .output {
+        min-height: 120px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      textarea {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
       .status { margin: 10px 0 14px; color: var(--muted); }
       .danger { color: var(--danger); }
       @media (max-width: 640px) {
