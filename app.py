@@ -75,7 +75,7 @@ DEFAULT_CHAIN_NAME = os.getenv("CHAIN_NAME", "Base Sepolia")
 DEFAULT_RPC_URL = os.getenv("RPC_URL", "https://sepolia.base.org")
 DEFAULT_OPG_TOKEN = os.getenv("OPG_TOKEN_ADDRESS", "")
 DEFAULT_OG_SPENDER = os.getenv("OG_SPENDER_ADDRESS", "")
-DEFAULT_OPG_FAUCET_URL = os.getenv("OPG_FAUCET_URL", "https://www.opengradient.ai/faucet")
+DEFAULT_OPG_FAUCET_URL = os.getenv("OPG_FAUCET_URL", "https://faucet.opengradient.ai")
 DEFAULT_ETH_FAUCET_URL = os.getenv("ETH_FAUCET_URL", "https://www.alchemy.com/faucets/base-sepolia")
 
 OG_SDK_MODEL = os.getenv("OG_SDK_MODEL", "GPT_4_1_2025_04_14")
