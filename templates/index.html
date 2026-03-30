@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenGradient Neon AI Terminal</title>
+    <title>OpenGradient Repo Security Checker</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
@@ -125,7 +125,19 @@
   </head>
   <body class="scanlines">
     <div class="wrap">
-      <h1>OpenGradient Neon AI Terminal</h1>
+      <h1>OpenGradient Repo Security Checker</h1>
+
+      <section class="panel">
+        <div class="panel-title">Repository Scanner</div>
+        <div class="meta">Analyze a GitHub repository with OpenGradient AI + heuristic risk scoring.</div>
+        <div class="grid">
+          <input id="repoUrl" placeholder="https://github.com/owner/repo" value="https://github.com/ntclick/OPmeme" />
+          <input id="repoFocus" placeholder="focus (optional)" value="smart-contract and dependency risks" />
+        </div>
+        <button id="repoCheckBtn">Run Repo Security Check</button>
+        <div class="status" id="repoStatus">Status: idle</div>
+        <div class="output" id="repoOutput">Repository report...</div>
+      </section>
 
       <section class="panel">
         <div class="panel-title">Wallet Console</div>
@@ -232,6 +244,10 @@
       const runStatusEl = document.getElementById("runStatus");
       const outputEl = document.getElementById("output");
       const promptEl = document.getElementById("prompt");
+      const repoStatusEl = document.getElementById("repoStatus");
+      const repoOutputEl = document.getElementById("repoOutput");
+      const repoUrlEl = document.getElementById("repoUrl");
+      const repoFocusEl = document.getElementById("repoFocus");
 
       const x402StateEl = document.getElementById("x402State");
       const x402StatusEl = document.getElementById("x402Status");
@@ -266,6 +282,7 @@
       const refreshBtn = document.getElementById("refreshBtn");
       const approveBtn = document.getElementById("approveBtn");
       const runBtn = document.getElementById("runBtn");
+      const repoCheckBtn = document.getElementById("repoCheckBtn");
       const ethFaucetBtn = document.getElementById("ethFaucetBtn");
       const opgFaucetBtn = document.getElementById("opgFaucetBtn");
 
@@ -431,6 +448,47 @@
         }
       }
 
+      async function runRepoSecurityCheck() {
+        const repo_url = repoUrlEl.value.trim();
+        const focus = repoFocusEl.value.trim();
+        if (!repo_url) { repoStatusEl.textContent = "Status: repository URL is required"; return; }
+        repoCheckBtn.disabled = true;
+        repoStatusEl.textContent = "Status: scanning repository...";
+        repoOutputEl.textContent = "Collecting repository metadata and running AI analysis...";
+        try {
+          const r = await fetch("/api/repo-security/check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ repo_url, focus })
+          });
+          const data = await r.json();
+          if (!r.ok) {
+            repoOutputEl.textContent = data.details || data.error || "Unknown error";
+            repoStatusEl.innerHTML = '<span class="danger">Status: check failed</span>';
+            return;
+          }
+
+          const formatted = [
+            `Repository: ${data.repo}`,
+            `Provider: ${data.provider}`,
+            "",
+            "Heuristics:",
+            pretty(data.heuristics),
+            "",
+            "AI Analysis:",
+            data.analysis
+          ].join("\n");
+
+          repoOutputEl.textContent = formatted;
+          repoStatusEl.textContent = `Status: complete (${data.provider})`;
+        } catch (error) {
+          repoOutputEl.textContent = error.message;
+          repoStatusEl.innerHTML = '<span class="danger">Status: network error</span>';
+        } finally {
+          repoCheckBtn.disabled = false;
+        }
+      }
+
       async function x402Prepare() {
         const model = x402ModelEl.value.trim();
         const settlement = x402SettlementEl.value;
@@ -503,7 +561,7 @@
 
       async function createModelRepo() {
         const model_name = modelNameEl.value.trim();
-        const model_desc = modelDescEl.value.trim() || "Created from Neon AI Terminal";
+        const model_desc = modelDescEl.value.trim() || "Created from OpenGradient Repo Security Checker";
         if (!model_name) { hubStatusEl.innerHTML = '<span class="danger">Status: model name is required</span>'; return; }
         hubStatusEl.textContent = "Status: creating model repo...";
         const r = await fetch("/api/modelhub/create-model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model_name, model_desc }) });
@@ -615,6 +673,10 @@
       refreshBtn.addEventListener("click", refreshBalance);
       approveBtn.addEventListener("click", approveOpg);
       runBtn.addEventListener("click", runModel);
+      repoCheckBtn.addEventListener("click", () => runRepoSecurityCheck().catch((e) => {
+        repoStatusEl.innerHTML = '<span class="danger">Status: check failed</span>';
+        repoOutputEl.textContent = e.message;
+      }));
       ethFaucetBtn.addEventListener("click", () => openLink(cfg?.ethFaucetUrl));
       opgFaucetBtn.addEventListener("click", () => openLink(cfg?.opgFaucetUrl));
 
