@@ -455,6 +455,18 @@
             runStatusEl.innerHTML = '<span class="danger">Status: failed</span>';
             return;
           }
+          if (data.provider === "x402_prepare_required") {
+            runStatusEl.textContent = "Status: x402 required, auto-running Prepare -> Submit...";
+            const auto = await runModelViaRawX402(prompt);
+            if (auto.ok) {
+              outputEl.textContent = auto.response;
+              runStatusEl.textContent = `Status: success via ${auto.provider}`;
+            } else {
+              outputEl.textContent = auto.error || data.response || "x402 manual step required";
+              runStatusEl.innerHTML = '<span class="danger">Status: x402 manual step required</span>';
+            }
+            return;
+          }
           outputEl.textContent = data.response;
           runStatusEl.textContent = `Status: success via ${data.provider}`;
         } catch (error) {
@@ -463,6 +475,59 @@
         } finally {
           runBtn.disabled = false;
         }
+      }
+
+      async function runModelViaRawX402(prompt) {
+        const model = (x402ModelEl.value || cfg?.x402DefaultModel || "google/gemini-2.5-flash").trim();
+        const settlement = x402SettlementEl.value || cfg?.x402DefaultSettlement || "private";
+        const max_tokens = Number(x402MaxTokensEl.value || "256");
+        const messages = [
+          { role: "system", content: "You are a helpful AI assistant." },
+          { role: "user", content: prompt }
+        ];
+
+        const prepareRes = await fetch("/api/x402/prepare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model, settlement, max_tokens, messages })
+        });
+        const prepareData = await prepareRes.json();
+        x402OutputEl.textContent = prettyX402(prepareData);
+
+        if (!(prepareRes.ok && prepareData.status_code === 402)) {
+          return { ok: false, error: `Prepare failed: ${prepareData.error || pretty(prepareData)}` };
+        }
+
+        const signature = (prepareData.auto_payment_signature || "").trim();
+        if (!signature) {
+          x402PaymentEl.value = "";
+          return {
+            ok: false,
+            error: "Auto-signature unavailable. Use Raw x402 block manually: Prepare -> paste signed X-PAYMENT -> Submit."
+          };
+        }
+
+        x402PaymentEl.value = signature;
+        const submitRes = await fetch("/api/x402/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model, settlement, max_tokens, x_payment: signature, messages })
+        });
+        const submitData = await submitRes.json();
+        x402OutputEl.textContent = prettyX402(submitData);
+
+        if (!(submitRes.ok && submitData.status_code === 200)) {
+          return { ok: false, error: submitData.error || submitData.details || pretty(submitData) };
+        }
+
+        let content = "";
+        const body = submitData.body;
+        if (body && typeof body === "object") {
+          try { content = (((body.choices || [])[0] || {}).message || {}).content || ""; } catch {}
+        } else if (typeof body === "string") {
+          content = body;
+        }
+        return { ok: true, response: content || pretty(body), provider: "x402_auto_submit" };
       }
 
       async function x402Prepare() {
