@@ -730,6 +730,7 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
         try:
             return call_opengradient_sdk(prompt), "opengradient_sdk"
         except Exception as sdk_exc:
+            debug_details = f"x402_error={x402_exc}; sdk_error={sdk_exc}"
             if manual_x402_message and ENABLE_WIKI_FALLBACK:
                 try:
                     return call_wikipedia_fallback(prompt), "wikipedia_fallback"
@@ -737,7 +738,9 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                     return call_offline_fallback(prompt), "offline_fallback"
 
             if manual_x402_message:
-                return call_offline_fallback(prompt), "offline_fallback"
+                if ENABLE_WIKI_FALLBACK:
+                    return call_offline_fallback(prompt), "offline_fallback"
+                raise RuntimeError(f"{manual_x402_message}. Details: {debug_details}")
 
             if _is_402_error(sdk_exc):
                 try:
@@ -751,11 +754,20 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                         settlement=X402_DEFAULT_SETTLEMENT,
                     )
                     if status_code == 402:
-                        return call_offline_fallback(prompt), "offline_fallback"
+                        if ENABLE_WIKI_FALLBACK:
+                            return call_offline_fallback(prompt), "offline_fallback"
+                        requirement_preview = str(headers)[:400]
+                        raise RuntimeError(
+                            "SDK returned 402 and x402 prepare also returned 402. "
+                            f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}. "
+                            f"Details: {debug_details}"
+                        )
                 except Exception:
                     pass
 
-            return call_offline_fallback(prompt), "offline_fallback"
+            if ENABLE_WIKI_FALLBACK:
+                return call_offline_fallback(prompt), "offline_fallback"
+            raise RuntimeError(f"OpenGradient inference failed without fallback. Details: {debug_details}")
 
 
 def call_openai(prompt: str) -> str:
