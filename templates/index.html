@@ -517,7 +517,13 @@
         x402OutputEl.textContent = prettyX402(submitData);
 
         if (!(submitRes.ok && submitData.status_code === 200)) {
-          return { ok: false, error: submitData.error || submitData.details || pretty(submitData) };
+          if (submitData && Number(submitData.status_code) === 402) {
+            return {
+              ok: false,
+              error: "Gateway returned 402 on Submit (payment not accepted yet). This is a current x402 gateway limitation, not a wallet/frontend bug. Try again later or use a fallback provider."
+            };
+          }
+          return { ok: false, error: submitData.error || submitData.details || "x402 submit failed" };
         }
 
         let content = "";
