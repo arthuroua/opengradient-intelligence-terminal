@@ -117,6 +117,16 @@
       }
       .status { margin: 10px 0 14px; color: var(--muted); }
       .danger { color: var(--danger); }
+      .guide {
+        margin: 10px 0 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--line-soft);
+        border-radius: 10px;
+        background: rgba(3, 11, 23, 0.55);
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
       @media (max-width: 640px) {
         h1 { font-size: 28px; }
         .wrap { padding-top: 28px; }
@@ -176,6 +186,13 @@
       <section class="panel">
         <div class="panel-title">Raw x402 Gateway</div>
         <div class="meta" id="x402State">x402: checking config...</div>
+        <div class="guide">
+          <b>How to use Raw x402:</b><br />
+          1. Click <code>Prepare (expect 402)</code>.<br />
+          2. If <code>auto_payment_signature</code> appears, it is auto-filled below.<br />
+          3. If not auto-filled, sign payment payload externally and paste into <code>X-PAYMENT</code>.<br />
+          4. Click <code>Submit X-PAYMENT</code> to execute inference.
+        </div>
         <div class="grid">
           <input id="x402Model" placeholder="model id" />
           <select id="x402Settlement">
