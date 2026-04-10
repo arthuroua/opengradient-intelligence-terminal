@@ -765,7 +765,8 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
             if manual_x402_message:
                 if ENABLE_WIKI_FALLBACK:
                     return call_offline_fallback(prompt), "offline_fallback"
-                raise RuntimeError(f"{manual_x402_message}. Details: {debug_details}")
+                # Return actionable instruction without hard-failing UI.
+                return f"{manual_x402_message}. Details: {debug_details}", "x402_prepare_required"
 
             if _is_402_error(sdk_exc):
                 try:
@@ -782,17 +783,18 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                         if ENABLE_WIKI_FALLBACK:
                             return call_offline_fallback(prompt), "offline_fallback"
                         requirement_preview = str(headers)[:400]
-                        raise RuntimeError(
+                        return (
                             "SDK returned 402 and x402 prepare also returned 402. "
                             f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}. "
-                            f"Details: {debug_details}"
+                            f"Details: {debug_details}",
+                            "x402_prepare_required",
                         )
                 except Exception:
                     pass
 
             if ENABLE_WIKI_FALLBACK:
                 return call_offline_fallback(prompt), "offline_fallback"
-            raise RuntimeError(f"OpenGradient inference failed without fallback. Details: {debug_details}")
+            return f"OpenGradient inference failed without fallback. Details: {debug_details}", "opengradient_debug"
 
 
 def call_openai(prompt: str) -> str:
