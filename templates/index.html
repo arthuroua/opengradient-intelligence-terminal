@@ -127,6 +127,15 @@
         font-size: 13px;
         line-height: 1.45;
       }
+      .dev-note {
+        margin: 8px 0 12px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px dashed rgba(255, 211, 107, 0.5);
+        color: #ffd36b;
+        background: rgba(255, 211, 107, 0.08);
+        font-size: 13px;
+      }
       .advanced {
         border: 1px solid var(--line-soft);
         border-radius: 10px;
@@ -203,8 +212,13 @@
       <details class="advanced">
         <summary>Advanced Tools (Experimental): Raw x402, Model Hub, Alpha ML</summary>
         <div class="advanced-body">
+      <div class="dev-note">
+        In development: some advanced flows are currently unstable.
+        Raw x402 submit may return 402 (unsupported payload type), and Alpha infer/workflows may fail with missing InferenceResult event.
+      </div>
       <section class="panel">
         <div class="panel-title">Raw x402 Gateway</div>
+        <div class="dev-note">Status: in development. Raw x402 submit is currently unstable on some OG gateways.</div>
         <div class="meta" id="x402State">x402: checking config...</div>
         <div class="guide">
           <b>How to use Raw x402:</b><br />
@@ -254,6 +268,7 @@
 
       <section class="panel">
         <div class="panel-title">Alpha ML & Workflows</div>
+        <div class="dev-note">Status: in development. Alpha infer/workflows can fail due to alpha network event issues.</div>
         <div class="meta" id="alphaState">Alpha: checking config...</div>
         <div class="grid">
           <input id="alphaModelCid" placeholder="model CID (Qm...)" value="QmbUqS93oc4JTLMHwpVxsE39mhNxy6hpf6Py3r9oANr8aZ" />
