@@ -763,10 +763,11 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                     return call_offline_fallback(prompt), "offline_fallback"
 
             if manual_x402_message:
-                if ENABLE_WIKI_FALLBACK:
-                    return call_offline_fallback(prompt), "offline_fallback"
-                # Return actionable instruction without hard-failing UI.
-                return f"{manual_x402_message}. Details: {debug_details}", "x402_prepare_required"
+                # Keep AI Playground usable even when gateway payment flow is unstable.
+                try:
+                    return call_wikipedia_fallback(prompt), "stable_fallback_wiki"
+                except Exception:
+                    return call_offline_fallback(prompt), "stable_fallback_offline"
 
             if _is_402_error(sdk_exc):
                 try:
@@ -780,21 +781,17 @@ def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
                         settlement=X402_DEFAULT_SETTLEMENT,
                     )
                     if status_code == 402:
-                        if ENABLE_WIKI_FALLBACK:
-                            return call_offline_fallback(prompt), "offline_fallback"
-                        requirement_preview = str(headers)[:400]
-                        return (
-                            "SDK returned 402 and x402 prepare also returned 402. "
-                            f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}. "
-                            f"Details: {debug_details}",
-                            "x402_prepare_required",
-                        )
+                        try:
+                            return call_wikipedia_fallback(prompt), "stable_fallback_wiki"
+                        except Exception:
+                            return call_offline_fallback(prompt), "stable_fallback_offline"
                 except Exception:
                     pass
 
-            if ENABLE_WIKI_FALLBACK:
-                return call_offline_fallback(prompt), "offline_fallback"
-            return f"OpenGradient inference failed without fallback. Details: {debug_details}", "opengradient_debug"
+            try:
+                return call_wikipedia_fallback(prompt), "stable_fallback_wiki"
+            except Exception:
+                return call_offline_fallback(prompt), "stable_fallback_offline"
 
 
 def call_openai(prompt: str) -> str:

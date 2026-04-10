@@ -127,6 +127,22 @@
         font-size: 13px;
         line-height: 1.45;
       }
+      .advanced {
+        border: 1px solid var(--line-soft);
+        border-radius: 10px;
+        margin-bottom: 18px;
+        background: rgba(3, 11, 23, 0.45);
+      }
+      .advanced > summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 12px 14px;
+        color: var(--muted);
+      }
+      .advanced > summary::-webkit-details-marker { display: none; }
+      .advanced-body {
+        padding: 0 12px 12px;
+      }
       @media (max-width: 640px) {
         h1 { font-size: 28px; }
         .wrap { padding-top: 28px; }
@@ -177,12 +193,16 @@
 
       <section class="panel">
         <div class="panel-title">AI Playground (SDK/Fallback)</div>
+        <div class="meta">Stable mode: if OG/x402 is unavailable, the app automatically returns a fallback answer.</div>
         <textarea id="prompt">Explain zero knowledge proofs simply</textarea>
         <button id="runBtn">Run Model</button>
         <div class="status" id="runStatus">Status: idle</div>
         <div class="output" id="output">Model output...</div>
       </section>
 
+      <details class="advanced">
+        <summary>Advanced Tools (Experimental): Raw x402, Model Hub, Alpha ML</summary>
+        <div class="advanced-body">
       <section class="panel">
         <div class="panel-title">Raw x402 Gateway</div>
         <div class="meta" id="x402State">x402: checking config...</div>
@@ -256,6 +276,8 @@
         <div class="status" id="alphaStatus">Status: idle</div>
         <div class="output" id="alphaOutput">Alpha output...</div>
       </section>
+        </div>
+      </details>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
