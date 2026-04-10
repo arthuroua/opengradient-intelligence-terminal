@@ -584,11 +584,20 @@ def _resolve_settlement_mode():
 
 def _ensure_approval_once(llm):
     with _approval_lock:
-        try:
-            llm.ensure_opg_approval(min_allowance=OG_APPROVAL_OPG_AMOUNT)
-        except TypeError:
-            # Backward compatibility for older SDK versions.
-            llm.ensure_opg_approval(opg_amount=OG_APPROVAL_OPG_AMOUNT)
+        # Try signatures in a safe order to support multiple SDK versions.
+        errors = []
+        for kwargs in (
+            {"min_allowance": OG_APPROVAL_OPG_AMOUNT},
+            {"opg_amount": OG_APPROVAL_OPG_AMOUNT},
+            {},
+        ):
+            try:
+                llm.ensure_opg_approval(**kwargs)
+                return
+            except TypeError as exc:
+                errors.append(str(exc))
+                continue
+        raise RuntimeError("ensure_opg_approval failed for all known signatures: " + " | ".join(errors))
 
 
 def _ensure_x402_backend_approval_once():
@@ -607,12 +616,20 @@ def _ensure_x402_backend_approval_once():
         if _x402_backend_approval_ready:
             return
         llm = og.LLM(private_key=private_key)
-        try:
-            llm.ensure_opg_approval(min_allowance=OG_APPROVAL_OPG_AMOUNT)
-        except TypeError:
-            # Backward compatibility for older SDK versions.
-            llm.ensure_opg_approval(opg_amount=OG_APPROVAL_OPG_AMOUNT)
-        _x402_backend_approval_ready = True
+        errors = []
+        for kwargs in (
+            {"min_allowance": OG_APPROVAL_OPG_AMOUNT},
+            {"opg_amount": OG_APPROVAL_OPG_AMOUNT},
+            {},
+        ):
+            try:
+                llm.ensure_opg_approval(**kwargs)
+                _x402_backend_approval_ready = True
+                return
+            except TypeError as exc:
+                errors.append(str(exc))
+                continue
+        raise RuntimeError("x402 backend approval failed for all known signatures: " + " | ".join(errors))
 
 
 def _get_hub():
