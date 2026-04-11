@@ -72,6 +72,9 @@
         letter-spacing: 0.08em;
       }
       .meta { color: var(--muted); margin-bottom: 8px; font-size: 14px; }
+      .meta.success { color: #7cffb8; }
+      .meta.warn { color: #ffd36b; }
+      .meta.error { color: var(--danger); }
       .buttons { display: flex; flex-wrap: wrap; gap: 10px; }
       .grid {
         display: grid;
@@ -108,12 +111,12 @@
         overflow: auto;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
-        word-break: break-word;
+        word-break: break-all;
       }
       textarea {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
-        word-break: break-word;
+        word-break: break-all;
       }
       .status { margin: 10px 0 14px; color: var(--muted); }
       .danger { color: var(--danger); }
@@ -244,6 +247,10 @@
           <button id="x402SubmitBtn">Submit PAYMENT-SIGNATURE</button>
         </div>
         <div class="status" id="x402Status">Status: idle</div>
+        <div class="meta" id="x402FlowState">Flow: idle</div>
+        <div class="buttons">
+          <button id="x402CopyReportBtn">Copy x402 Debug Report</button>
+        </div>
         <div class="output" id="x402Output">x402 output...</div>
       </section>
 
@@ -343,6 +350,8 @@
 
       const x402PrepareBtn = document.getElementById("x402PrepareBtn");
       const x402SubmitBtn = document.getElementById("x402SubmitBtn");
+      const x402CopyReportBtn = document.getElementById("x402CopyReportBtn");
+      const x402FlowStateEl = document.getElementById("x402FlowState");
 
       const createModelBtn = document.getElementById("createModelBtn");
       const createVersionBtn = document.getElementById("createVersionBtn");
@@ -358,6 +367,9 @@
       let provider = null;
       let signer = null;
       let account = null;
+      let x402LastPrepareData = null;
+      let x402LastSubmitData = null;
+      let x402AutoPaymentSignatureRaw = "";
 
       const ERC20_ABI = [
         "function approve(address spender, uint256 amount) external returns (bool)",
@@ -386,27 +398,55 @@
         if (value.length <= head + tail + 3) return value;
         return `${value.slice(0, head)}...${value.slice(-tail)} [len=${value.length}]`;
       }
+      function compactLongStrings(value) {
+        if (Array.isArray(value)) return value.map(compactLongStrings);
+        if (value && typeof value === "object") {
+          const out = {};
+          for (const [k, v] of Object.entries(value)) out[k] = compactLongStrings(v);
+          return out;
+        }
+        if (typeof value === "string") return shortToken(value, 84, 28);
+        return value;
+      }
       function prettyX402(data) {
         try {
           if (!data || typeof data !== "object") return pretty(data);
-          const clone = JSON.parse(JSON.stringify(data));
-
-          if (typeof clone.auto_payment_signature === "string") {
-            clone.auto_payment_signature = shortToken(clone.auto_payment_signature);
-          }
-          if (clone.headers && typeof clone.headers === "object") {
-            if (typeof clone.headers["Payment-Required"] === "string") {
-              clone.headers["Payment-Required"] = shortToken(clone.headers["Payment-Required"]);
-            }
-            if (typeof clone.headers["PAYMENT-REQUIRED"] === "string") {
-              clone.headers["PAYMENT-REQUIRED"] = shortToken(clone.headers["PAYMENT-REQUIRED"]);
-            }
-          }
-
-          return JSON.stringify(clone, null, 2);
+          return JSON.stringify(compactLongStrings(JSON.parse(JSON.stringify(data))), null, 2);
         } catch {
           return pretty(data);
         }
+      }
+      function setX402FlowState(text, level = "warn") {
+        x402FlowStateEl.className = `meta ${level}`;
+        x402FlowStateEl.textContent = `Flow: ${text}`;
+      }
+      function setPaymentPreviewFromAutoSignature(signature) {
+        x402AutoPaymentSignatureRaw = signature || "";
+        if (x402AutoPaymentSignatureRaw) {
+          x402PaymentEl.value = `[auto-filled PAYMENT-SIGNATURE ${shortToken(x402AutoPaymentSignatureRaw, 22, 12)}]`;
+        } else {
+          x402PaymentEl.value = "";
+        }
+      }
+      function getEffectivePaymentSignature() {
+        const entered = x402PaymentEl.value.trim();
+        if (!entered) return "";
+        if (entered.startsWith("[auto-filled PAYMENT-SIGNATURE")) return x402AutoPaymentSignatureRaw;
+        x402AutoPaymentSignatureRaw = "";
+        return entered;
+      }
+      function buildX402DebugReport() {
+        const lines = [];
+        lines.push("x402 Debug Report");
+        lines.push(`time: ${new Date().toISOString()}`);
+        lines.push(`endpoint: ${(cfg && cfg.x402Endpoint) || "unknown"}`);
+        lines.push(`model: ${x402ModelEl.value.trim() || "(empty)"}`);
+        lines.push(`settlement: ${x402SettlementEl.value || "(empty)"}`);
+        lines.push(`status_line: ${x402StatusEl.textContent.trim()}`);
+        lines.push(`flow_line: ${x402FlowStateEl.textContent.trim()}`);
+        if (x402LastPrepareData) lines.push(`prepare: ${prettyX402(x402LastPrepareData)}`);
+        if (x402LastSubmitData) lines.push(`submit: ${prettyX402(x402LastSubmitData)}`);
+        return lines.join("\n");
       }
       function parseJson(text, label) {
         try { return JSON.parse(text); }
@@ -420,6 +460,7 @@
         hubStateEl.textContent = cfg.modelHubConfigured ? "Model Hub: credentials configured" : "Model Hub: set OG_HUB_EMAIL and OG_HUB_PASSWORD";
         alphaStateEl.textContent = cfg.alphaConfigured ? "Alpha: private key configured" : "Alpha: set OG_ALPHA_PRIVATE_KEY (or OG_PRIVATE_KEY)";
         x402StateEl.textContent = `x402 endpoint: ${cfg.x402Endpoint}`;
+        setX402FlowState("idle", "warn");
         if (!x402ModelEl.value) x402ModelEl.value = cfg.x402DefaultModel || "google/gemini-2.5-flash";
         if (cfg.x402DefaultSettlement) x402SettlementEl.value = cfg.x402DefaultSettlement;
       }
@@ -544,37 +585,44 @@
           body: JSON.stringify({ model, settlement, max_tokens, messages })
         });
         const prepareData = await prepareRes.json();
+        x402LastPrepareData = prepareData;
         x402OutputEl.textContent = prettyX402(prepareData);
 
         if (!(prepareRes.ok && prepareData.status_code === 402)) {
+          setX402FlowState("prepare failed", "error");
           return { ok: false, error: `Prepare failed: ${prepareData.error || pretty(prepareData)}` };
         }
 
         const signature = (prepareData.auto_payment_signature || "").trim();
         if (!signature) {
-          x402PaymentEl.value = "";
+          setPaymentPreviewFromAutoSignature("");
+          setX402FlowState("waiting for external signature", "warn");
           return {
             ok: false,
-            error: "Auto-signature unavailable. Use Raw x402 block manually: Prepare -> paste signed X-PAYMENT -> Submit."
+            error: "Auto-signature unavailable. Use Raw x402 block manually: Prepare -> paste signed PAYMENT-SIGNATURE -> Submit."
           };
         }
 
-        x402PaymentEl.value = signature;
+        setPaymentPreviewFromAutoSignature(signature);
+        setX402FlowState("auto-signed, submitting", "warn");
         const submitRes = await fetch("/api/x402/submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, settlement, max_tokens, x_payment: signature, messages })
+          body: JSON.stringify({ model, settlement, max_tokens, payment_signature: signature, messages })
         });
         const submitData = await submitRes.json();
+        x402LastSubmitData = submitData;
         x402OutputEl.textContent = prettyX402(submitData);
 
         if (!(submitRes.ok && submitData.status_code === 200)) {
           if (submitData && Number(submitData.status_code) === 402) {
+            setX402FlowState("gateway returned 402 on submit", "error");
             return {
               ok: false,
               error: "Gateway returned 402 on Submit (payment not accepted yet). This is a current x402 gateway limitation, not a wallet/frontend bug. Try again later or use a fallback provider."
             };
           }
+          setX402FlowState("submit failed", "error");
           return { ok: false, error: submitData.error || submitData.details || "x402 submit failed" };
         }
 
@@ -585,6 +633,7 @@
         } else if (typeof body === "string") {
           content = body;
         }
+        setX402FlowState("submit success", "success");
         return { ok: true, response: content || pretty(body), provider: "x402_auto_submit" };
       }
 
@@ -610,18 +659,24 @@
           body: JSON.stringify(body)
         });
         const data = await r.json();
+        x402LastPrepareData = data;
         x402OutputEl.textContent = prettyX402(data);
         if (r.ok && data.status_code === 402) {
           if (data.auto_payment_signature) {
-            x402PaymentEl.value = data.auto_payment_signature;
+            setPaymentPreviewFromAutoSignature(data.auto_payment_signature);
             x402StatusEl.textContent = "Status: got 402 and auto-signed payment; now click Submit PAYMENT-SIGNATURE";
+            setX402FlowState("prepare ok, auto-signature ready", "warn");
           } else {
+            setPaymentPreviewFromAutoSignature("");
             x402StatusEl.textContent = "Status: got 402, now sign and paste PAYMENT-SIGNATURE";
+            setX402FlowState("prepare ok, waiting for signature", "warn");
           }
         } else if (r.ok && data.status_code === 200) {
           x402StatusEl.textContent = "Status: request already succeeded (no payment step)";
+          setX402FlowState("prepare returned 200", "success");
         } else {
           x402StatusEl.innerHTML = '<span class="danger">Status: prepare failed</span>';
+          setX402FlowState("prepare failed", "error");
         }
       }
 
@@ -630,14 +685,15 @@
         const settlement = x402SettlementEl.value;
         const max_tokens = Number(x402MaxTokensEl.value || "256");
         const prompt = x402PromptEl.value.trim();
-        const x_payment = x402PaymentEl.value.trim();
-        if (!x_payment) { x402StatusEl.textContent = "Status: paste PAYMENT-SIGNATURE first"; return; }
+        const payment_signature = getEffectivePaymentSignature();
+        if (!payment_signature) { x402StatusEl.textContent = "Status: paste PAYMENT-SIGNATURE first"; return; }
         x402StatusEl.textContent = "Status: submitting PAYMENT-SIGNATURE...";
+        setX402FlowState("submitting signature", "warn");
         const body = {
           model,
           settlement,
           max_tokens,
-          payment_signature: x_payment,
+          payment_signature,
           messages: [
             { role: "system", content: "You are a helpful AI assistant." },
             { role: "user", content: prompt }
@@ -649,8 +705,18 @@
           body: JSON.stringify(body)
         });
         const data = await r.json();
+        x402LastSubmitData = data;
         x402OutputEl.textContent = prettyX402(data);
-        x402StatusEl.innerHTML = r.ok ? "Status: x402 submit success" : '<span class="danger">Status: submit failed</span>';
+        if (r.ok && Number(data.status_code) === 200) {
+          x402StatusEl.textContent = "Status: x402 submit success";
+          setX402FlowState("submit success", "success");
+        } else if (Number(data.status_code) === 402) {
+          x402StatusEl.innerHTML = '<span class="danger">Status: submit failed (402)</span>';
+          setX402FlowState("gateway 402 on submit (known issue)", "error");
+        } else {
+          x402StatusEl.innerHTML = '<span class="danger">Status: submit failed</span>';
+          setX402FlowState("submit failed", "error");
+        }
       }
 
       function openLink(url) {
@@ -782,7 +848,17 @@
       x402SubmitBtn.addEventListener("click", () => x402Submit().catch((e) => {
         x402StatusEl.innerHTML = '<span class="danger">Status: submit failed</span>';
         x402OutputEl.textContent = e.message;
+        setX402FlowState("submit failed", "error");
       }));
+      x402CopyReportBtn.addEventListener("click", async () => {
+        const report = buildX402DebugReport();
+        try {
+          await navigator.clipboard.writeText(report);
+          x402StatusEl.textContent = "Status: debug report copied";
+        } catch {
+          x402StatusEl.innerHTML = '<span class="danger">Status: clipboard copy failed</span>';
+        }
+      });
 
       createModelBtn.addEventListener("click", () => createModelRepo().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: create model failed</span>'; hubOutputEl.textContent = e.message; }));
       createVersionBtn.addEventListener("click", () => createVersion().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: create version failed</span>'; hubOutputEl.textContent = e.message; }));
