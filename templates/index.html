@@ -225,8 +225,8 @@
           <b>How to use Raw x402:</b><br />
           1. Click <code>Prepare (expect 402)</code>.<br />
           2. If <code>auto_payment_signature</code> appears, it is auto-filled below.<br />
-          3. If not auto-filled, sign payment payload externally and paste into <code>X-PAYMENT</code>.<br />
-          4. Click <code>Submit X-PAYMENT</code> to execute inference.
+          3. If not auto-filled, sign payment payload externally and paste into <code>PAYMENT-SIGNATURE</code>.<br />
+          4. Click <code>Submit PAYMENT-SIGNATURE</code> to execute inference.
         </div>
         <div class="grid">
           <input id="x402Model" placeholder="model id" />
@@ -238,10 +238,10 @@
           <input id="x402MaxTokens" placeholder="max tokens" value="256" />
         </div>
         <textarea id="x402Prompt">Hello from raw x402 flow</textarea>
-        <textarea id="x402Payment" placeholder="Paste signed X-PAYMENT value here"></textarea>
+        <textarea id="x402Payment" placeholder="Paste signed PAYMENT-SIGNATURE value here"></textarea>
         <div class="buttons">
           <button id="x402PrepareBtn">Prepare (expect 402)</button>
-          <button id="x402SubmitBtn">Submit X-PAYMENT</button>
+          <button id="x402SubmitBtn">Submit PAYMENT-SIGNATURE</button>
         </div>
         <div class="status" id="x402Status">Status: idle</div>
         <div class="output" id="x402Output">x402 output...</div>
@@ -614,9 +614,9 @@
         if (r.ok && data.status_code === 402) {
           if (data.auto_payment_signature) {
             x402PaymentEl.value = data.auto_payment_signature;
-            x402StatusEl.textContent = "Status: got 402 and auto-signed payment; now click Submit X-PAYMENT";
+            x402StatusEl.textContent = "Status: got 402 and auto-signed payment; now click Submit PAYMENT-SIGNATURE";
           } else {
-            x402StatusEl.textContent = "Status: got 402, now sign and paste X-PAYMENT";
+            x402StatusEl.textContent = "Status: got 402, now sign and paste PAYMENT-SIGNATURE";
           }
         } else if (r.ok && data.status_code === 200) {
           x402StatusEl.textContent = "Status: request already succeeded (no payment step)";
@@ -631,13 +631,13 @@
         const max_tokens = Number(x402MaxTokensEl.value || "256");
         const prompt = x402PromptEl.value.trim();
         const x_payment = x402PaymentEl.value.trim();
-        if (!x_payment) { x402StatusEl.textContent = "Status: paste X-PAYMENT first"; return; }
-        x402StatusEl.textContent = "Status: submitting X-PAYMENT...";
+        if (!x_payment) { x402StatusEl.textContent = "Status: paste PAYMENT-SIGNATURE first"; return; }
+        x402StatusEl.textContent = "Status: submitting PAYMENT-SIGNATURE...";
         const body = {
           model,
           settlement,
           max_tokens,
-          x_payment,
+          payment_signature: x_payment,
           messages: [
             { role: "system", content: "You are a helpful AI assistant." },
             { role: "user", content: prompt }

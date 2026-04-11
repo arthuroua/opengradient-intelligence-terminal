@@ -1309,7 +1309,7 @@ def x402_prepare():
                 "body": body,
                 "auto_payment_signature": auto_payment_signature,
                 "auto_sign_error": auto_sign_error,
-                "hint": "If status_code is 402, sign payment payload client-side and call /api/x402/submit with x_payment",
+                "hint": "If status_code is 402, sign payment payload client-side and call /api/x402/submit with payment_signature",
             }
         ), (200 if response.status_code in (200, 402) else 502)
     except requests.RequestException as exc:
@@ -1322,12 +1322,16 @@ def x402_submit():
     model = (data.get("model") or X402_DEFAULT_MODEL).strip()
     settlement = (data.get("settlement") or X402_DEFAULT_SETTLEMENT).strip().lower()
     max_tokens = int(data.get("max_tokens") or 256)
-    x_payment = (data.get("x_payment") or "").strip()
     payment_signature = (data.get("payment_signature") or "").strip()
+    x_payment = (data.get("x_payment") or "").strip()
     messages = data.get("messages")
 
-    if not x_payment and not payment_signature:
-        return _json_error("x_payment or payment_signature is required", 400)
+    if not payment_signature and x_payment:
+        # Backward compatibility: treat x_payment as PAYMENT-SIGNATURE.
+        payment_signature = x_payment
+
+    if not payment_signature:
+        return _json_error("payment_signature is required", 400)
     if not isinstance(messages, list) or not messages:
         return _json_error("messages must be a non-empty array", 400)
 
@@ -1335,12 +1339,7 @@ def x402_submit():
         "Content-Type": "application/json",
         "X-SETTLEMENT-TYPE": settlement,
     }
-    if payment_signature:
-        headers["PAYMENT-SIGNATURE"] = payment_signature
-    if x_payment:
-        headers["X-PAYMENT"] = x_payment
-        if not payment_signature:
-            headers["PAYMENT-SIGNATURE"] = x_payment
+    headers["PAYMENT-SIGNATURE"] = payment_signature
 
     api_key = os.getenv("OG_API_KEY")
     if api_key:
