@@ -1464,7 +1464,7 @@ def modelhub_upload_file():
 def alpha_infer():
     data = request.get_json(silent=True) or {}
     model_cid = (data.get("model_cid") or "").strip()
-    mode = (data.get("mode") or "VANILLA").upper().strip()
+    mode = (data.get("mode") or "TEE").upper().strip()
     model_input = data.get("model_input")
     max_retries = data.get("max_retries")
 
