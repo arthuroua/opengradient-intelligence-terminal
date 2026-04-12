@@ -555,18 +555,6 @@
             runStatusEl.innerHTML = '<span class="danger">Status: failed</span>';
             return;
           }
-          if (data.provider === "x402_prepare_required") {
-            runStatusEl.textContent = "Status: x402 required, auto-running Prepare -> Submit...";
-            const auto = await runModelViaRawX402(prompt);
-            if (auto.ok) {
-              outputEl.textContent = auto.response;
-              runStatusEl.textContent = `Status: success via ${providerLabel(auto.provider)}`;
-            } else {
-              outputEl.textContent = auto.error || data.response || "x402 manual step required";
-              runStatusEl.innerHTML = '<span class="danger">Status: x402 manual step required</span>';
-            }
-            return;
-          }
           outputEl.textContent = data.response;
           runStatusEl.textContent = `Status: success via ${providerLabel(data.provider)}`;
         } catch (error) {

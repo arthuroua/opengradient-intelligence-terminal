@@ -714,84 +714,22 @@ def call_opengradient_sdk(prompt: str) -> str:
 
 
 def call_opengradient_sdk_with_x402_fallback(prompt: str) -> tuple[str, str]:
-    # Prefer direct x402 flow first because SDK runtime can be unstable in some deployments.
-    manual_x402_message = None
+    # SDK-first flow: let OpenGradient SDK handle payment/signing internally.
+    # Raw x402 remains available in the Advanced panel only for manual debugging.
     try:
-        _ensure_x402_backend_approval_once()
-        status_code, headers, body, endpoint_used = _x402_auto_pay_request(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            model=X402_DEFAULT_MODEL,
-            max_tokens=300,
-            settlement=X402_DEFAULT_SETTLEMENT,
-        )
-        if status_code == 200:
-            content = ""
-            if isinstance(body, dict):
-                try:
-                    content = ((body.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-                except Exception:
-                    content = ""
-            if content and str(content).strip():
-                return str(content).strip(), "x402_gateway_auto_paid"
-            if isinstance(body, str) and body.strip():
-                return body.strip(), "x402_gateway_auto_paid"
-            return str(body)[:1000], "x402_gateway_auto_paid"
-
-        if status_code == 402:
-            requirement_preview = str(headers)[:400]
-            manual_x402_message = (
-                "Payment is required and manual x402 flow is ready. "
-                "Use the Raw x402 Gateway block: click Prepare, sign payload, paste X-PAYMENT (or PAYMENT-SIGNATURE), then Submit. "
-                f"Payment headers: {requirement_preview}. Endpoint used: {endpoint_used}"
-            )
-            raise RuntimeError("x402 returned 402")
-
-        raise RuntimeError(f"x402 auto-pay failed with status {status_code}: {str(body)[:400]}")
-    except Exception as x402_exc:
-        # Fallback to SDK only if direct x402 failed.
-        try:
-            return call_opengradient_sdk(prompt), "opengradient_sdk"
-        except Exception as sdk_exc:
-            debug_details = f"x402_error={x402_exc}; sdk_error={sdk_exc}"
-            if manual_x402_message and ENABLE_WIKI_FALLBACK:
-                try:
-                    return call_wikipedia_fallback(prompt), "wikipedia_fallback"
-                except Exception:
-                    return call_offline_fallback(prompt), "offline_fallback"
-
-            if manual_x402_message:
-                # Keep AI Playground usable even when gateway payment flow is unstable.
-                try:
-                    return call_wikipedia_fallback(prompt), "stable_fallback_wiki"
-                except Exception:
-                    return call_offline_fallback(prompt), "stable_fallback_offline"
-
-            if _is_402_error(sdk_exc):
-                try:
-                    status_code, headers, _body, endpoint_used = _x402_prepare_request(
-                        messages=[
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": prompt},
-                        ],
-                        model=X402_DEFAULT_MODEL,
-                        max_tokens=300,
-                        settlement=X402_DEFAULT_SETTLEMENT,
-                    )
-                    if status_code == 402:
-                        try:
-                            return call_wikipedia_fallback(prompt), "stable_fallback_wiki"
-                        except Exception:
-                            return call_offline_fallback(prompt), "stable_fallback_offline"
-                except Exception:
-                    pass
-
+        return call_opengradient_sdk(prompt), "opengradient_sdk"
+    except Exception as sdk_exc:
+        if _is_402_error(sdk_exc):
+            # Keep main UX stable while gateway/x402 is temporarily inconsistent.
             try:
                 return call_wikipedia_fallback(prompt), "stable_fallback_wiki"
             except Exception:
                 return call_offline_fallback(prompt), "stable_fallback_offline"
+
+        try:
+            return call_wikipedia_fallback(prompt), "stable_fallback_wiki"
+        except Exception:
+            return call_offline_fallback(prompt), "stable_fallback_offline"
 
 
 def call_openai(prompt: str) -> str:
@@ -1128,12 +1066,14 @@ def generate_reply(prompt: str) -> tuple[str, str]:
     if provider == "opengradient_sdk":
         return call_opengradient_sdk_with_x402_fallback(prompt)
     for name, fn in (
-        ("opengradient_sdk", lambda p: call_opengradient_sdk_with_x402_fallback(p)[0]),
+        ("opengradient_sdk", call_opengradient_sdk_with_x402_fallback),
         ("openai", call_openai),
         ("gemini", call_gemini),
         ("opengradient", call_opengradient_http),
     ):
         try:
+            if name == "opengradient_sdk":
+                return fn(prompt)
             return fn(prompt), name
         except Exception as exc:
             errors.append(f"{name}: {exc}")
