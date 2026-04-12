@@ -30,6 +30,37 @@
           radial-gradient(circle at 86% 80%, rgba(46, 255, 168, 0.13), transparent 22%),
           linear-gradient(165deg, var(--bg), var(--bg-2) 62%, #030711);
       }
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        backdrop-filter: blur(8px);
+        background: rgba(4, 10, 19, 0.86);
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .topbar-inner {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 10px 18px;
+      }
+      .brand-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        color: var(--text);
+      }
+      .brand-link img {
+        height: 34px;
+        width: auto;
+        display: block;
+      }
+      .brand-link span {
+        font-family: "Orbitron", sans-serif;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+      }
       .scanlines::before {
         content: "";
         position: fixed;
@@ -167,6 +198,14 @@
     </style>
   </head>
   <body class="scanlines">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand-link" href="https://www.opengradient.ai" target="_blank" rel="noopener noreferrer">
+          <img src="/static/og-logo.png" alt="OpenGradient" />
+          <span>OpenGradient</span>
+        </a>
+      </div>
+    </header>
     <div class="wrap">
       <h1>OpenGradient Builder Terminal</h1>
       <div class="subtitle">
