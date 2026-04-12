@@ -171,14 +171,14 @@
       <h1>OpenGradient Builder Terminal</h1>
       <div class="subtitle">
         All-in-one builder app: wallet setup, OPG approve, faucet access, TEE LLM chat (SDK/x402),
-        Model Hub actions, and Alpha ML workflow tools in one place.
+        and Alpha ML workflow tools in one place.
       </div>
 
       <section class="panel">
         <div class="panel-title">Why This Site Is Useful</div>
         <div class="meta">
           It helps builders move faster: you can fund and prepare the wallet, run verifiable AI inference,
-          test raw x402 payment flow, manage Model Hub repos, and experiment with Alpha ML/workflows from one UI.
+          test raw x402 payment flow, and experiment with Alpha ML/workflows from one UI.
         </div>
       </section>
 
@@ -214,7 +214,7 @@
       </section>
 
       <details class="advanced">
-        <summary>Advanced Tools (Experimental, temporarily unavailable): Raw x402, Model Hub, Alpha ML</summary>
+        <summary>Advanced Tools (Experimental, temporarily unavailable): Raw x402, Alpha ML</summary>
         <div class="advanced-body">
       <div class="dev-note">
         In development: some advanced flows are currently unstable.
@@ -252,26 +252,6 @@
           <button id="x402CopyReportBtn">Copy x402 Debug Report</button>
         </div>
         <div class="output" id="x402Output">x402 output...</div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-title">Model Hub</div>
-        <div class="meta" id="hubState">Model Hub: checking config...</div>
-        <div class="grid">
-          <input id="modelName" placeholder="model repo name (e.g. my_model)" />
-          <input id="modelDesc" placeholder="model description" />
-          <input id="versionNotes" placeholder="version notes" />
-          <input id="versionId" placeholder="version (e.g. 1.00)" />
-        </div>
-        <div class="grid"><input id="modelFile" type="file" /></div>
-        <div class="buttons">
-          <button id="createModelBtn">Create Model Repo</button>
-          <button id="createVersionBtn">Create Version</button>
-          <button id="listFilesBtn">List Files</button>
-          <button id="uploadFileBtn">Upload File</button>
-        </div>
-        <div class="status" id="hubStatus">Status: idle</div>
-        <div class="output" id="hubOutput">Model Hub output...</div>
       </section>
 
       <section class="panel">
@@ -321,15 +301,6 @@
       const x402PromptEl = document.getElementById("x402Prompt");
       const x402PaymentEl = document.getElementById("x402Payment");
 
-      const hubStateEl = document.getElementById("hubState");
-      const hubStatusEl = document.getElementById("hubStatus");
-      const hubOutputEl = document.getElementById("hubOutput");
-      const modelNameEl = document.getElementById("modelName");
-      const modelDescEl = document.getElementById("modelDesc");
-      const versionNotesEl = document.getElementById("versionNotes");
-      const versionIdEl = document.getElementById("versionId");
-      const modelFileEl = document.getElementById("modelFile");
-
       const alphaStateEl = document.getElementById("alphaState");
       const alphaStatusEl = document.getElementById("alphaStatus");
       const alphaOutputEl = document.getElementById("alphaOutput");
@@ -352,11 +323,6 @@
       const x402SubmitBtn = document.getElementById("x402SubmitBtn");
       const x402CopyReportBtn = document.getElementById("x402CopyReportBtn");
       const x402FlowStateEl = document.getElementById("x402FlowState");
-
-      const createModelBtn = document.getElementById("createModelBtn");
-      const createVersionBtn = document.getElementById("createVersionBtn");
-      const listFilesBtn = document.getElementById("listFilesBtn");
-      const uploadFileBtn = document.getElementById("uploadFileBtn");
 
       const alphaInferBtn = document.getElementById("alphaInferBtn");
       const alphaDeployWorkflowBtn = document.getElementById("alphaDeployWorkflowBtn");
@@ -457,7 +423,6 @@
         const r = await fetch("/api/config");
         cfg = await r.json();
         networkStateEl.textContent = `Network: ${cfg.chainName} (chainId ${cfg.chainId})`;
-        hubStateEl.textContent = cfg.modelHubConfigured ? "Model Hub: credentials configured" : "Model Hub: set OG_HUB_EMAIL and OG_HUB_PASSWORD";
         alphaStateEl.textContent = cfg.alphaConfigured ? "Alpha: private key configured" : "Alpha: set OG_ALPHA_PRIVATE_KEY (or OG_PRIVATE_KEY)";
         x402StateEl.textContent = `x402 endpoint: ${cfg.x402Endpoint}`;
         setX402FlowState("idle", "warn");
@@ -724,57 +689,6 @@
         window.open(url, "_blank", "noopener,noreferrer");
       }
 
-      async function createModelRepo() {
-        const model_name = modelNameEl.value.trim();
-        const model_desc = modelDescEl.value.trim() || "Created from OpenGradient Builder Terminal";
-        if (!model_name) { hubStatusEl.innerHTML = '<span class="danger">Status: model name is required</span>'; return; }
-        hubStatusEl.textContent = "Status: creating model repo...";
-        const r = await fetch("/api/modelhub/create-model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model_name, model_desc }) });
-        const data = await r.json();
-        hubOutputEl.textContent = pretty(data);
-        hubStatusEl.innerHTML = r.ok ? "Status: model repo created" : '<span class="danger">Status: create model failed</span>';
-      }
-
-      async function createVersion() {
-        const model_name = modelNameEl.value.trim();
-        const notes = versionNotesEl.value.trim() || "Created from web terminal";
-        if (!model_name) { hubStatusEl.innerHTML = '<span class="danger">Status: model name is required</span>'; return; }
-        hubStatusEl.textContent = "Status: creating version...";
-        const r = await fetch("/api/modelhub/create-version", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model_name, notes }) });
-        const data = await r.json();
-        hubOutputEl.textContent = pretty(data);
-        if (r.ok && data.version && !versionIdEl.value.trim()) versionIdEl.value = String(data.version);
-        hubStatusEl.innerHTML = r.ok ? "Status: version created" : '<span class="danger">Status: create version failed</span>';
-      }
-
-      async function listFiles() {
-        const model_name = modelNameEl.value.trim();
-        const version = versionIdEl.value.trim();
-        if (!model_name || !version) { hubStatusEl.innerHTML = '<span class="danger">Status: model name and version required</span>'; return; }
-        hubStatusEl.textContent = "Status: loading file list...";
-        const url = `/api/modelhub/list-files?model_name=${encodeURIComponent(model_name)}&version=${encodeURIComponent(version)}`;
-        const r = await fetch(url);
-        const data = await r.json();
-        hubOutputEl.textContent = pretty(data);
-        hubStatusEl.innerHTML = r.ok ? "Status: files loaded" : '<span class="danger">Status: list files failed</span>';
-      }
-
-      async function uploadFile() {
-        const model_name = modelNameEl.value.trim();
-        const version = versionIdEl.value.trim();
-        const file = modelFileEl.files?.[0];
-        if (!model_name || !version || !file) { hubStatusEl.innerHTML = '<span class="danger">Status: model name, version and file required</span>'; return; }
-        hubStatusEl.textContent = "Status: uploading file...";
-        const fd = new FormData();
-        fd.append("model_name", model_name);
-        fd.append("version", version);
-        fd.append("file", file);
-        const r = await fetch("/api/modelhub/upload", { method: "POST", body: fd });
-        const data = await r.json();
-        hubOutputEl.textContent = pretty(data);
-        hubStatusEl.innerHTML = r.ok ? "Status: file uploaded" : '<span class="danger">Status: upload failed</span>';
-      }
-
       async function alphaInfer() {
         const model_cid = alphaModelCidEl.value.trim();
         const mode = alphaModeEl.value;
@@ -859,11 +773,6 @@
           x402StatusEl.innerHTML = '<span class="danger">Status: clipboard copy failed</span>';
         }
       });
-
-      createModelBtn.addEventListener("click", () => createModelRepo().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: create model failed</span>'; hubOutputEl.textContent = e.message; }));
-      createVersionBtn.addEventListener("click", () => createVersion().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: create version failed</span>'; hubOutputEl.textContent = e.message; }));
-      listFilesBtn.addEventListener("click", () => listFiles().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: list files failed</span>'; hubOutputEl.textContent = e.message; }));
-      uploadFileBtn.addEventListener("click", () => uploadFile().catch((e) => { hubStatusEl.innerHTML = '<span class="danger">Status: upload failed</span>'; hubOutputEl.textContent = e.message; }));
 
       alphaInferBtn.addEventListener("click", () => alphaInfer().catch((e) => { alphaStatusEl.innerHTML = '<span class="danger">Status: alpha infer failed</span>'; alphaOutputEl.textContent = e.message; }));
       alphaDeployWorkflowBtn.addEventListener("click", () => alphaDeployWorkflow().catch((e) => { alphaStatusEl.innerHTML = '<span class="danger">Status: deploy failed</span>'; alphaOutputEl.textContent = e.message; }));
