@@ -369,7 +369,8 @@ def _build_legacy_xpayment_header(payment_required_header: str) -> str:
 
     payload = {
         "x402Version": int(getattr(payment_required, "x402_version", 2) or 2),
-        "scheme": str(getattr(selected, "scheme", "upto") or "upto"),
+        # Default legacy fallback scheme to "exact" for OG gateway compatibility.
+        "scheme": str(getattr(selected, "scheme", "exact") or "exact"),
         "network": network,
         "payload": {
             "signature": signature,
