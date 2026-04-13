@@ -294,9 +294,9 @@
       </section>
 
       <section class="panel">
-        <div class="panel-title">Alpha ML & Workflows</div>
-        <div class="dev-note">Status: in development. Alpha infer/workflows can fail due to alpha network event issues.</div>
-        <div class="meta" id="alphaState">Alpha: checking config...</div>
+        <div class="panel-title">Alpha ML & Workflows (Deprecated)</div>
+        <div class="dev-note">Alpha testnet is deprecated by OG team. This block is disabled for now. On-chain ML is expected on testnet soon.</div>
+        <div class="meta warn" id="alphaState">Alpha: temporarily unavailable (deprecated network)</div>
         <div class="grid">
           <input id="alphaModelCid" placeholder="model CID (Qm...)" value="QmbUqS93oc4JTLMHwpVxsE39mhNxy6hpf6Py3r9oANr8aZ" />
           <select id="alphaMode">
@@ -310,13 +310,13 @@
         <textarea id="alphaInputJson">{"num_input1":[1.0,2.0,3.0],"num_input2":10,"str_input1":["hello","ONNX"],"str_input2":" world"}</textarea>
         <textarea id="workflowDeployJson">{"input_tensor_name":"open_high_low_close","input_query":{"base":"ETH","quote":"USD","total_candles":10,"candle_duration_in_mins":30,"order":"ASCENDING","candle_types":["OPEN","HIGH","LOW","CLOSE"]},"scheduler":{"frequency":3600,"duration_hours":24}}</textarea>
         <div class="buttons">
-          <button id="alphaInferBtn">Run Alpha Infer</button>
-          <button id="alphaDeployWorkflowBtn">Deploy Workflow</button>
-          <button id="alphaRunWorkflowBtn">Run Workflow</button>
-          <button id="alphaReadWorkflowBtn">Read Workflow Result</button>
+          <button id="alphaInferBtn" disabled>Run Alpha Infer</button>
+          <button id="alphaDeployWorkflowBtn" disabled>Deploy Workflow</button>
+          <button id="alphaRunWorkflowBtn" disabled>Run Workflow</button>
+          <button id="alphaReadWorkflowBtn" disabled>Read Workflow Result</button>
         </div>
-        <div class="status" id="alphaStatus">Status: idle</div>
-        <div class="output" id="alphaOutput">Alpha output...</div>
+        <div class="status" id="alphaStatus">Status: disabled (deprecated Alpha network)</div>
+        <div class="output" id="alphaOutput">Alpha block is disabled. Use AI Playground (SDK/Fallback) for now.</div>
       </section>
         </div>
       </details>
@@ -465,7 +465,7 @@
         const r = await fetch("/api/config");
         cfg = await r.json();
         networkStateEl.textContent = `Network: ${cfg.chainName} (chainId ${cfg.chainId})`;
-        alphaStateEl.textContent = cfg.alphaConfigured ? "Alpha: private key configured" : "Alpha: set OG_ALPHA_PRIVATE_KEY (or OG_PRIVATE_KEY)";
+        alphaStateEl.textContent = "Alpha: temporarily unavailable (deprecated network)";
         x402StateEl.textContent = `x402 endpoint: ${cfg.x402Endpoint}`;
         setX402FlowState("idle", "warn");
         if (!x402ModelEl.value) x402ModelEl.value = cfg.x402DefaultModel || "google/gemini-2.5-flash";
